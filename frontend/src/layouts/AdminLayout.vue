@@ -96,7 +96,6 @@ const sideNavItems = [
   { path: '/admin/billing', icon: 'payments', label: '营收统计' },
   { path: '/admin/devices', icon: 'router', label: '设备管理' },
   { path: '/admin/ai-vision', icon: 'neurology', label: 'AI 视觉监测' },
-  { path: '/admin/alerts', icon: 'warning', label: '警报中心' },
   { path: '/admin/profile', icon: 'account_circle', label: '个人资料' },
 ]
 
@@ -105,7 +104,6 @@ const mobileTabs = [
   { path: '/admin/dashboard', icon: 'dashboard', label: '概览' },
   { path: '/admin/spaces', icon: 'local_parking', label: '车位' },
   { path: '/admin/users', icon: 'group', label: '用户' },
-  { path: '/admin/alerts', icon: 'warning', label: '警报' },
 ]
 
 /** 退出登录 */

@@ -103,33 +103,8 @@
       </div>
     </section>
 
-    <!-- ===== 近期告警 + 系统运行 ===== -->
-    <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <!-- 近期告警 -->
-      <div class="rounded-2xl p-6 bg-surface-container-lowest border border-outline-variant/10 shadow-sm">
-        <div class="flex justify-between items-center mb-4">
-          <h3 class="font-bold text-on-surface">近期告警</h3>
-          <router-link to="/admin/alerts" class="text-xs text-primary font-semibold hover:underline">查看全部 →</router-link>
-        </div>
-        <div class="space-y-3">
-          <div
-            v-for="alert in recentAlerts"
-            :key="alert.id"
-            class="flex items-start gap-3 p-3 rounded-xl hover:bg-surface-container-low transition-colors"
-          >
-            <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" :class="alert.bgClass">
-              <span class="material-symbols-outlined text-sm" :class="alert.iconClass">{{ alert.icon }}</span>
-            </div>
-            <div class="flex-1 min-w-0">
-              <p class="text-sm font-semibold text-on-surface truncate">{{ alert.title }}</p>
-              <p class="text-xs text-secondary mt-0.5">{{ alert.time }}</p>
-            </div>
-            <span class="text-xs font-bold px-2 py-1 rounded-full flex-shrink-0" :class="alert.statusClass">{{ alert.status }}</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- 系统运行状况 -->
+    <!-- ===== 系统运行 ===== -->
+    <section class="grid grid-cols-1 gap-6">
       <div class="rounded-2xl p-6 bg-surface-container-lowest border border-outline-variant/10 shadow-sm">
         <h3 class="font-bold text-on-surface mb-4">系统运行状况</h3>
         <div class="space-y-4">
@@ -160,7 +135,6 @@
 
 import { ref, onMounted } from 'vue'
 import { getDashboardOverview } from '@/api/dashboard'
-import { getAlerts } from '@/api/alert'
 import { ElMessage } from 'element-plus'
 
 const dateRange = ref([])
@@ -186,8 +160,6 @@ const maxRevenue = ref(20000)
 
 const occupancyRate = ref(0)
 const occupancyBreakdown = ref([])
-
-const recentAlerts = ref([])
 
 const systemStatus = ref([
   { icon: 'dns', label: '服务器负载', value: '23%' },
@@ -222,19 +194,6 @@ async function loadData() {
     revenueData.value[6].value = data.daily_revenue
     maxRevenue.value = Math.max(...revenueData.value.map(d => d.value)) || 1
     
-    // 加载近期告警
-    const alertsRes = await getAlerts({ limit: 5 })
-    const aList = alertsRes.results || alertsRes || []
-    recentAlerts.value = aList.slice(0, 5).map(a => ({
-       id: a.id,
-       title: a.title,
-       time: new Date(a.created_at).toLocaleString(),
-       status: a.status === 'pending' ? '待处理' : '已解决',
-       icon: a.severity === 'high' ? 'warning' : 'info',
-       bgClass: a.severity === 'high' ? 'bg-error/10' : 'bg-amber-50',
-       iconClass: a.severity === 'high' ? 'text-error' : 'text-amber-600',
-       statusClass: a.status === 'pending' ? 'bg-error/10 text-error' : 'bg-green-50 text-green-600'
-    }))
   } catch (err) {
     ElMessage.error('无法加载仪表盘数据')
   }

@@ -36,7 +36,6 @@ urlpatterns = [
     path('api/v1/parking/', include('parking.urls')),
     path('api/v1/payments/', include('payments.urls')),
     path('api/v1/devices/', include('devices.urls')),
-    path('api/v1/alerts/', include('alerts.urls')),
     path('api/v1/dashboard/', include('dashboard.urls')),
     path('api/v1/ai/recognize/', ai_recognize_plate, name='ai_recognize_compat'),
     # 地图与硬件 webhook 兼容路由（与 /api/v1/parking/* 并存）

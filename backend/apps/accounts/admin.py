@@ -5,6 +5,16 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import User, Vehicle
 
 
+def _remove_user_permissions(fieldsets):
+    cleaned = []
+    for title, options in fieldsets:
+        fields = options.get('fields', ())
+        if isinstance(fields, (tuple, list)):
+            options = {**options, 'fields': tuple(f for f in fields if f != 'user_permissions')}
+        cleaned.append((title, options))
+    return tuple(cleaned)
+
+
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     """用户管理 — 在 Django Admin 中扩展显示字段"""
@@ -12,7 +22,7 @@ class UserAdmin(BaseUserAdmin):
     list_filter = ['status', 'is_vip', 'is_staff', 'is_active']
     search_fields = ['username', 'phone', 'email']
     # 在编辑表单中增加自定义字段
-    fieldsets = BaseUserAdmin.fieldsets + (
+    fieldsets = _remove_user_permissions(BaseUserAdmin.fieldsets) + (
         ('扩展信息', {'fields': ('phone', 'avatar', 'is_vip', 'status')}),
     )
     add_fieldsets = BaseUserAdmin.add_fieldsets + (

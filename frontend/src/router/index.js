@@ -118,12 +118,6 @@ const adminRoutes = [
         meta: { title: '设备管理 | Sentinel Admin' },
       },
       {
-        path: 'alerts',
-        name: 'AdminAlerts',
-        component: () => import('@/views/admin/AlertsView.vue'),
-        meta: { title: '预警中心 | Sentinel Admin' },
-      },
-      {
         path: 'ai-vision',
         name: 'AdminAIVision',
         component: () => import('@/views/admin/AIVisionView.vue'),

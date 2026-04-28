@@ -60,6 +60,8 @@ class User(AbstractUser):
         '2FA 密钥', max_length=32, blank=True, null=True,
         help_text='用于生成 TOTP 二维码的 32 位随机密钥'
     )
+    # 不启用“用户直接权限”分配，只保留组权限与超级管理员权限。
+    user_permissions = None
 
     class Meta:
         verbose_name = '用户'

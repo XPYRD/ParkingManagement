@@ -15,7 +15,6 @@ from rest_framework.response import Response
 from parking.models import ParkingSpace, ParkingSession
 from payments.models import Payment
 from devices.models import Device
-from alerts.models import Alert
 
 
 class DashboardOverviewView(APIView):
@@ -60,11 +59,11 @@ class DashboardOverviewView(APIView):
             avg_uptime=Avg('uptime'),
         )
 
-        # 4. 近期告警数 — 对应 _7 告警表格总数
-        alert_stats = Alert.objects.aggregate(
-            pending=Count('id', filter=Q(status=Alert.Status.PENDING)),
-            total_today=Count('id', filter=Q(created_at__date=today)),
-        )
+        # 4. 预警模块已下线，返回固定空统计避免前端字段缺失
+        alert_stats = {
+            'pending': 0,
+            'total_today': 0,
+        }
 
         # 5. 今日流量 — 对应 _7 "车辆流量" 区域
         today_traffic = ParkingSession.objects.filter(

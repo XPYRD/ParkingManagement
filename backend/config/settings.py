@@ -67,7 +67,6 @@ INSTALLED_APPS = [
     'parking',      # 车位、停车会话、预约
     'payments',     # 支付、订阅、定价规则
     'devices',      # 设备管理
-    'alerts',       # 预警、工单
 ]
 
 # ============================================================
@@ -163,6 +162,11 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # 自定义用户模型 — 覆盖 Django 默认 User
 # ============================================================
 AUTH_USER_MODEL = 'accounts.User'
+
+# 仅启用组权限与超级管理员权限，不启用用户直授权限。
+AUTHENTICATION_BACKENDS = (
+    'accounts.backends.GroupOnlyPermissionBackend',
+)
 
 # ============================================================
 # Django REST Framework 全局配置
