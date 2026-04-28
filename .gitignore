@@ -10,5 +10,6 @@ backend/**/*.pyc
 backend/db.sqlite3
 backend/media/
 backend/staticfiles/
+backend/models_weights/yolov8x.pt
 *.log
 .DS_Store
