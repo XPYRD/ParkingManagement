@@ -1,15 +1,51 @@
+# Virtual Environments
 .venv/
+venv/
+env/
+ENV/
+.env/
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# IDE
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
+
+# Frontend
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.DS_Store
+
+# Backend
 backend/__pycache__/
 backend/**/*.pyc
 backend/db.sqlite3
 backend/media/
 backend/staticfiles/
-backend/models_weights/yolov8x.pt
-*.log
+backend/models_weights/
+backend/*.log
+
+# Large files
+*.pt
+*.pth
+*.onnx
+
+# OS
 .DS_Store
+Thumbs.db
+*.log
+
+# Build outputs
+/build/
+/dist/
+*.egg-info/
