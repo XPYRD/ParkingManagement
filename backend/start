@@ -1,0 +1,2 @@
+cd backend
+ $env:DB_PASSWORD="123456"; python manage.py runserver 8080

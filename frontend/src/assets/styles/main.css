@@ -1,0 +1,116 @@
+/**
+ * Sentinel Parking — 全局样式入口
+ *
+ * 设计令牌提取自 Stitch 生成的 DESIGN.md 和所有 HTML 页面中的 tailwind.config。
+ * Tailwind CSS v4 使用 @import 语法。
+ */
+
+/* ============================================================
+   Google Fonts — 标题 & 正文字体（必须在 @import "tailwindcss" 之前）
+   ============================================================ */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
+
+@import "tailwindcss";
+
+/* ============================================================
+   Tailwind v4 — 自定义主题令牌 (CSS 变量方式)
+   从 Stitch 的 tailwind.config 中提取
+   ============================================================ */
+@theme {
+  /* ---- 色彩系统 (Material Design 3 色调架构) ---- */
+  --color-primary: #000666;
+  --color-primary-container: #1a237e;
+  --color-primary-fixed: #e0e0ff;
+  --color-primary-fixed-dim: #bdc2ff;
+  --color-on-primary: #ffffff;
+  --color-on-primary-container: #8690ee;
+  --color-on-primary-fixed: #000767;
+  --color-on-primary-fixed-variant: #343d96;
+
+  --color-secondary: #5e5e5e;
+  --color-secondary-container: #e3e2e2;
+  --color-secondary-fixed: #e3e2e2;
+  --color-secondary-fixed-dim: #c7c6c6;
+  --color-on-secondary: #ffffff;
+  --color-on-secondary-container: #646464;
+  --color-on-secondary-fixed: #1b1c1c;
+  --color-on-secondary-fixed-variant: #464747;
+
+  --color-tertiary: #2c1600;
+  --color-tertiary-container: #492800;
+  --color-tertiary-fixed: #ffdcbe;
+  --color-tertiary-fixed-dim: #ffb870;
+  --color-on-tertiary: #ffffff;
+  --color-on-tertiary-container: #dc8200;
+  --color-on-tertiary-fixed: #2c1600;
+  --color-on-tertiary-fixed-variant: #693c00;
+
+  --color-error: #ba1a1a;
+  --color-error-container: #ffdad6;
+  --color-on-error: #ffffff;
+  --color-on-error-container: #93000a;
+
+  --color-surface: #f9f9f9;
+  --color-surface-dim: #dadada;
+  --color-surface-bright: #f9f9f9;
+  --color-surface-variant: #e2e2e2;
+  --color-surface-container: #eeeeee;
+  --color-surface-container-low: #f3f3f3;
+  --color-surface-container-high: #e8e8e8;
+  --color-surface-container-highest: #e2e2e2;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-tint: #4c56af;
+
+  --color-on-surface: #1a1c1c;
+  --color-on-surface-variant: #454652;
+  --color-on-background: #1a1c1c;
+  --color-background: #f9f9f9;
+
+  --color-outline: #767683;
+  --color-outline-variant: #c6c5d4;
+
+  --color-inverse-surface: #2f3131;
+  --color-inverse-on-surface: #f1f1f1;
+  --color-inverse-primary: #bdc2ff;
+
+  /* ---- 字体 ---- */
+  --font-headline: 'Plus Jakarta Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-body: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-label: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+
+  /* ---- 圆角 ---- */
+  --radius-sm: 0.25rem;
+  --radius-DEFAULT: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1.5rem;
+  --radius-full: 9999px;
+}
+
+/* ============================================================
+   全局基础样式
+   ============================================================ */
+body {
+  font-family: var(--font-body);
+  background-color: var(--color-surface);
+  color: var(--color-on-surface);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-headline);
+}
+
+/* Material Symbols 图标基础配置 */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
+}
+
+/* Glassmorphism 工具类 — 从 Stitch 设计中提取 */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}

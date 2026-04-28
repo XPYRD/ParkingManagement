@@ -1,0 +1,30 @@
+# 核心框架
+Django>=4.2,<7.0
+djangorestframework>=3.14
+
+# 认证
+djangorestframework-simplejwt>=5.3
+pyotp>=2.9
+qrcode>=7.4
+
+# 跨域
+django-cors-headers>=4.3
+
+# 数据库
+mysqlclient>=2.2
+
+# 过滤
+django-filter>=23.5
+
+# 计算机视觉和 AI
+opencv-python>=4.8
+ultralytics>=8.0
+paddleocr>=2.7
+paddlepaddle>=2.5
+
+# 图像处理
+Pillow>=10.0
+
+# 工具库
+numpy>=1.24
+requests>=2.31
