@@ -2,46 +2,20 @@
   <div class="interactive-map-container">
     <!-- 地图搜索栏 -->
     <div class="search-bar">
-      <select
-        v-model="selectedStartSpotId"
-        class="location-select"
-        @change="handleStartPointChange"
-      >
-        <option value="">请选择我当前位置</option>
-        <option
-          v-for="start in startPointOptions"
-          :key="start.id"
-          :value="String(start.id)"
-        >
-          {{ start.label }} ({{ start.floor }})
-        </option>
-      </select>
-
-      <input 
-        v-model="searchQuery"
-        type="text" 
-        placeholder="搜索车位号，如：A001"
+      <input
+        v-model="searchPlate"
+        type="text"
+        placeholder="输入车牌号寻车，如：京A88888"
         class="search-input"
-        @keyup.enter="handleSearchSpace"
+        @keyup.enter="handleFindCar"
       />
-      <button @click="handleSearchSpace" class="search-btn">搜索</button>
-
-      <div class="divider"></div>
-
-      <input 
-        v-model="findCarPlate"
-        type="text" 
-        placeholder="输入车牌号反向寻车"
-        class="search-input find-car-input"
-        @keyup.enter="handleFindCarByPlate"
-      />
-      <button @click="handleFindCarByPlate" class="search-btn find-car-btn">反向寻车</button>
+      <button @click="handleFindCar" class="search-btn">寻车</button>
       <button @click="resetMap" class="reset-btn">重置</button>
     </div>
 
     <!-- SVG 地图容器 -->
     <div class="map-wrapper">
-      <svg 
+      <svg
         ref="svgMap"
         :viewBox="`0 0 ${mapWidth} ${mapHeight}`"
         class="svg-map"
@@ -52,7 +26,7 @@
           <pattern id="gridPattern" width="50" height="50" patternUnits="userSpaceOnUse">
             <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#e0e7ff" stroke-width="0.5"/>
           </pattern>
-          
+
           <!-- 路径流动动画 -->
           <style>
             .route-path {
@@ -68,7 +42,7 @@
 
         <!-- 底图背景 -->
         <rect width="100%" height="100%" fill="url(#gridPattern)" />
-        
+
         <!-- 背景建筑轮廓 -->
         <g id="background-layer" opacity="0.3">
           <rect x="20" y="20" width="960" height="760" fill="none" stroke="#1e293b" stroke-width="2"/>
@@ -80,7 +54,7 @@
         <!-- 路径规划结果层 (绘制在车位之下) -->
         <g id="route-layer">
           <!-- 动态绘制的导航路径会在这里 -->
-          <polyline 
+          <polyline
             v-if="navigationPath && navigationPath.length > 0"
             :points="navigationPath.map(p => `${p.x},${p.y}`).join(' ')"
             fill="none"
@@ -93,14 +67,14 @@
 
         <!-- 车位层 (业务数据层) -->
         <g id="parking-spaces-layer">
-          <g 
+          <g
             v-for="space in spaceStatus"
             :key="space.space_id"
             :class="['parking-space', getSpaceClass(space)]"
             @click="handleSpaceClick(space)"
           >
             <!-- 车位矩形背景 -->
-            <rect 
+            <rect
               :x="space.center_x - 20"
               :y="space.center_y - 30"
               width="40"
@@ -111,7 +85,7 @@
               stroke-width="2"
               class="space-rect"
             />
-            
+
             <!-- 车位编号文字 -->
             <text
               :x="space.center_x"
@@ -127,7 +101,7 @@
 
             <!-- 已占用时显示车牌号 -->
             <text
-              v-if="space.status === 'occupied' && space.current_plate"
+              v-if="space.status === 1 && space.current_plate"
               :x="space.center_x"
               :y="space.center_y - 20"
               text-anchor="middle"
@@ -143,7 +117,7 @@
         <!-- 起终点标记 -->
         <g id="route-markers">
           <!-- 起点（电梯/出口） -->
-          <circle 
+          <circle
             v-if="startPoint"
             :cx="startPoint.x"
             :cy="startPoint.y"
@@ -152,7 +126,7 @@
             stroke="#10b981"
             stroke-width="2"
           />
-          <text 
+          <text
             v-if="startPoint"
             :x="startPoint.x"
             :y="startPoint.y - 12"
@@ -165,7 +139,7 @@
           </text>
 
           <!-- 终点（目标车位） -->
-          <circle 
+          <circle
             v-if="endPoint"
             :cx="endPoint.x"
             :cy="endPoint.y"
@@ -174,7 +148,7 @@
             stroke="#f59e0b"
             stroke-width="2"
           />
-          <text 
+          <text
             v-if="endPoint"
             :x="endPoint.x"
             :y="endPoint.y - 12"
@@ -217,15 +191,15 @@
           </div>
         </div>
         <div class="detail-actions">
-          <button 
-            v-if="selectedSpace.status === 'free'"
+          <button
+            v-if="selectedSpace.status === 0"
             @click="handleNavigateTo(selectedSpace)"
             class="action-btn primary"
           >
             导航到此位置
           </button>
-          <button 
-            v-if="selectedSpace.status === 'occupied'"
+          <button
+            v-if="selectedSpace.status === 1"
             @click="handleFindCarFromPlate(selectedSpace.current_plate)"
             class="action-btn secondary"
           >
@@ -253,7 +227,7 @@
           </div>
           <div class="route-steps" v-if="navigationInfo.steps && navigationInfo.steps.length > 0">
             <div class="steps-title">导航步骤:</div>
-            <div 
+            <div
               v-for="(step, idx) in navigationInfo.steps"
               :key="idx"
               class="step-item"
@@ -286,76 +260,55 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import axios from 'axios'
 
-const spaceStatus = ref([])
-const startPointOptions = ref([])
-const selectedStartSpotId = ref('')
-const selectedSpace = ref(null)
+// ========== 数据状态 ==========
+const spaceStatus = ref([])  // 车位状态数据
+const selectedSpace = ref(null)  // 选中的车位
 const selectedSpaceId = ref(null)
-const searchQuery = ref('')
-const findCarPlate = ref('')
+const searchPlate = ref('')  // 搜索的车牌号
 const isLoading = ref(false)
 const errorMessage = ref('')
 
+// 地图尺寸
 const mapWidth = ref(1000)
 const mapHeight = ref(800)
 
-const navigationPath = ref([])
-const navigationInfo = ref(null)
-const startPoint = ref(null)
-const endPoint = ref(null)
+// 导航相关
+const navigationPath = ref([])  // 前端绘制的路径坐标数组
+const navigationInfo = ref(null)  // 后端返回的导航信息
+const startPoint = ref(null)  // 起点坐标
+const endPoint = ref(null)  // 终点坐标
 const svgMap = ref(null)
 
-const spotBySpaceId = computed(() => {
-  const map = new Map()
-  for (const spot of spaceStatus.value) {
-    map.set(spot.space_id, spot)
-  }
-  return map
-})
-
-const startPointById = computed(() => {
-  const map = new Map()
-  for (const start of startPointOptions.value) {
-    map.set(String(start.id), start)
-  }
-  return map
-})
-
+// ========== 初始化 ==========
 onMounted(async () => {
-  await Promise.all([loadMapData(), loadStartPoints()])
-  if (startPointOptions.value.length > 0) {
-    selectedStartSpotId.value = String(startPointOptions.value[0].id)
-    handleStartPointChange()
-  }
+  await loadMapData()
+  initializeTestData()  // 测试数据初始化
 })
 
+// ========== 方法 ==========
+
+/**
+ * 加载地图数据 - 获取所有车位状态
+ */
 async function loadMapData() {
   try {
     isLoading.value = true
     const response = await axios.get('/api/v1/map/spaces/')
-    if (response.data.code !== 200) {
-      throw new Error('地图数据返回异常')
-    }
 
-    spaceStatus.value = response.data.data.map((space) => {
-      const cx = Number.isFinite(space.center_x) ? space.center_x : space.x
-      const cy = Number.isFinite(space.center_y) ? space.center_y : space.y
-      return {
-        id: space.id,
+    if (response.data.code === 200) {
+      // 转换后端数据为前端格式
+      spaceStatus.value = response.data.data.map(space => ({
         space_id: space.space_id,
-        floor: space.floor,
-        node_type: space.node_type,
-        location_name: space.location_name || '',
         status: space.status,
         current_plate: space.current_plate || '',
-        center_x: Number.isFinite(cx) ? cx : null,
-        center_y: Number.isFinite(cy) ? cy : null,
-        last_updated: space.last_updated,
-      }
-    }).filter((spot) => Number.isFinite(spot.center_x) && Number.isFinite(spot.center_y))
+        center_x: Math.random() * 900 + 50,  // 实际应该从后端获取坐标
+        center_y: Math.random() * 700 + 50,
+        last_updated: new Date().toISOString()
+      }))
+    }
   } catch (error) {
     console.error('加载地图数据失败:', error)
     errorMessage.value = '加载地图数据失败，请刷新重试'
@@ -364,229 +317,340 @@ async function loadMapData() {
   }
 }
 
-async function loadStartPoints() {
-  try {
-    const response = await axios.get('/api/v1/map/start-points/')
-    if (response.data.code !== 200) {
-      throw new Error('导航起点返回异常')
+/**
+ * 初始化测试数据（开发阶段）
+ */
+function initializeTestData() {
+  // 生成测试的停车空间
+  if (spaceStatus.value.length === 0) {
+    const testSpaces = []
+    const rows = 4
+    const cols = 6
+    const spacingX = 140
+    const spacingY = 160
+
+    for (let i = 0; i < rows; i++) {
+      for (let j = 0; j < cols; j++) {
+        const isOccupied = Math.random() > 0.6
+        testSpaces.push({
+          space_id: `space_${String.fromCharCode(65 + i)}${String(j + 1).padStart(2, '0')}`,
+          status: isOccupied ? 1 : 0,
+          current_plate: isOccupied ? `京A${Math.floor(Math.random() * 100000)}` : '',
+          center_x: 80 + j * spacingX,
+          center_y: 100 + i * spacingY,
+          last_updated: new Date().toISOString()
+        })
+      }
     }
-    startPointOptions.value = response.data.data.filter(
-      (item) => Number.isFinite(item.center_x) && Number.isFinite(item.center_y)
-    )
-  } catch (error) {
-    console.error('加载导航起点失败:', error)
-    errorMessage.value = '加载导航起点失败，请检查后台起点配置'
+    spaceStatus.value = testSpaces
   }
 }
 
-function handleStartPointChange() {
-  const selected = startPointById.value.get(String(selectedStartSpotId.value))
-  if (!selected) {
-    startPoint.value = null
-    return
-  }
-  startPoint.value = { x: selected.center_x, y: selected.center_y }
-}
-
+/**
+ * 处理车位点击事件
+ */
 function handleSpaceClick(space) {
   selectedSpace.value = space
   selectedSpaceId.value = space.space_id
 }
 
-async function handleSearchSpace() {
-  const query = searchQuery.value.trim()
-  if (!query) {
-    errorMessage.value = '请输入车位号'
-    return
-  }
-
-  try {
-    isLoading.value = true
-    const spaceId = query.toLowerCase().startsWith('space_') ? query : `space_${query.toUpperCase()}`
-    const response = await axios.get('/api/v1/map/find_car/', { params: { space_id: spaceId } })
-
-    if (response.data.code === 200) {
-      const data = response.data.data
-      const targetSpot = spotBySpaceId.value.get(data.space_id)
-      if (targetSpot) {
-        selectedSpace.value = targetSpot
-        selectedSpaceId.value = targetSpot.space_id
-        // 搜索车位时仅定位，不强制导航，除非用户手动点击导航按钮
-      } else {
-        errorMessage.value = `地图中未找到车位 ${data.space_id}`
-      }
-    }
-  } catch (error) {
-    errorMessage.value = '搜索车位失败'
-  } finally {
-    isLoading.value = false
-  }
-}
-
-async function handleFindCarByPlate() {
-  if (!selectedStartSpotId.value) {
-    errorMessage.value = '请先选择“我现在在”位置'
-    return
-  }
-
-  const plate = findCarPlate.value.trim()
-  if (!plate) {
+/**
+ * 寻车功能
+ */
+async function handleFindCar() {
+  if (!searchPlate.value.trim()) {
     errorMessage.value = '请输入车牌号'
     return
   }
 
   try {
     isLoading.value = true
-    const response = await axios.get('/api/v1/map/find_car/', { params: { plate_number: plate } })
+    const response = await axios.get('/api/v1/map/find_car/', {
+      params: { plate_number: searchPlate.value }
+    })
 
     if (response.data.code === 200) {
       const carData = response.data.data
-      const targetSpot = spotBySpaceId.value.get(carData.space_id)
-      if (targetSpot) {
-        selectedSpace.value = targetSpot
-        selectedSpaceId.value = targetSpot.space_id
-        await calculateRouteBySpotIds(Number(selectedStartSpotId.value), Number(carData.spot_id || targetSpot.id))
+      const space = spaceStatus.value.find(s => s.space_id === carData.space_id)
+
+      if (space) {
+        selectedSpace.value = space
+        selectedSpaceId.value = space.space_id
+        // 设置终点为找到的车位
+        endPoint.value = { x: space.center_x, y: space.center_y }
+        // 从电梯出口导航到该车位
+        await calculateRoute()
       }
     }
   } catch (error) {
     if (error.response?.status === 404) {
-      errorMessage.value = '未找到该车牌号的车辆'
+      errorMessage.value = error.response.data.error || '未找到该车牌号'
     } else {
-      errorMessage.value = '反向寻车失败'
+      errorMessage.value = '寻车失败，请稍后重试'
     }
   } finally {
     isLoading.value = false
   }
 }
 
-async function handleFindCar() {
-
+/**
+ * 根据车牌号处理寻车
+ */
 async function handleFindCarFromPlate(plate) {
-  findCarPlate.value = plate || ''
-  await handleFindCarByPlate()
+  searchPlate.value = plate
+  await handleFindCar()
 }
 
+/**
+ * 导航到指定车位
+ */
 async function handleNavigateTo(space) {
-  if (!selectedStartSpotId.value) {
-    errorMessage.value = '请先选择“我现在在”位置'
-    return
-  }
-  await calculateRouteBySpotIds(Number(selectedStartSpotId.value), Number(space.id))
+  endPoint.value = { x: space.center_x, y: space.center_y }
+  // 模拟从电梯出口开始
+  startPoint.value = { x: 900, y: 50 }
+  await calculateRoute()
 }
 
-function buildPolylineFromSteps(steps) {
-  const points = []
-  for (const step of steps || []) {
-    if (Array.isArray(step.from_coords) && step.from_coords.length >= 2) {
-      const [x, y] = step.from_coords
-      if (points.length === 0 || points[points.length - 1].x !== x || points[points.length - 1].y !== y) {
-        points.push({ x, y })
-      }
-    }
-    if (Array.isArray(step.to_coords) && step.to_coords.length >= 2) {
-      const [x, y] = step.to_coords
-      points.push({ x, y })
-    }
-  }
-  return points
-}
+/**
+ * 计算路径（前端 Dijkstra 算法）
+ */
+async function calculateRoute() {
+  if (!startPoint.value || !endPoint.value) return
 
-async function calculateRouteBySpotIds(startSpotId, endSpotId) {
   try {
     isLoading.value = true
-    const response = await axios.post('/api/v1/parking/navigation/find-path/', {
-      start_spot_id: startSpotId,
-      end_spot_id: endSpotId,
-    })
 
-    const result = response.data
-    navigationInfo.value = result
-    navigationPath.value = buildPolylineFromSteps(result.steps)
+    // 构建简化的图
+    const graph = buildGraph()
+    const path = dijkstra(graph, startPoint.value, endPoint.value)
 
-    if (navigationPath.value.length > 0) {
-      startPoint.value = navigationPath.value[0]
-      endPoint.value = navigationPath.value[navigationPath.value.length - 1]
+    if (path && path.length > 0) {
+      navigationPath.value = path
+
+      // 计算距离和步骤
+      let totalDistance = 0
+      const steps = []
+
+      for (let i = 0; i < path.length - 1; i++) {
+        const from = path[i]
+        const to = path[i + 1]
+        const distance = Math.sqrt(
+          Math.pow(to.x - from.x, 2) + Math.pow(to.y - from.y, 2)
+        )
+        totalDistance += distance
+
+        // 查找对应的空间信息用于步骤描述
+        const fromSpace = spaceStatus.value.find(s =>
+          Math.abs(s.center_x - from.x) < 5 && Math.abs(s.center_y - from.y) < 5
+        )
+        const toSpace = spaceStatus.value.find(s =>
+          Math.abs(s.center_x - to.x) < 5 && Math.abs(s.center_y - to.y) < 5
+        )
+
+        steps.push({
+          from: fromSpace?.space_id || `坐标(${Math.round(from.x)},${Math.round(from.y)})`,
+          to: toSpace?.space_id || `坐标(${Math.round(to.x)},${Math.round(to.y)})`,
+          distance: distance
+        })
+      }
+
+      navigationInfo.value = {
+        path: path,
+        distance: totalDistance,
+        steps: steps
+      }
+    } else {
+      errorMessage.value = '无法计算路径，目标不可达'
     }
   } catch (error) {
     console.error('路径计算错误:', error)
-    if (error.response?.data?.error) {
-      errorMessage.value = error.response.data.error
-    } else {
-      errorMessage.value = '路径计算失败'
-    }
+    errorMessage.value = '路径计算失败'
   } finally {
     isLoading.value = false
   }
 }
 
+/**
+ * 构建导航图
+ */
+function buildGraph() {
+  const nodes = []
+  const edges = []
+
+  // 添加起点
+  nodes.push(startPoint.value)
+
+  // 添加所有空闲车位作为可达节点
+  spaceStatus.value.forEach(space => {
+    nodes.push({ x: space.center_x, y: space.center_y, spaceId: space.space_id })
+  })
+
+  // 添加终点
+  nodes.push(endPoint.value)
+
+  // 构建边（节点间的连接）
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const dist = Math.sqrt(
+        Math.pow(nodes[j].x - nodes[i].x, 2) +
+        Math.pow(nodes[j].y - nodes[i].y, 2)
+      )
+      // 只连接距离较近的节点
+      if (dist < 300) {
+        edges.push({ from: i, to: j, weight: dist })
+        edges.push({ from: j, to: i, weight: dist })
+      }
+    }
+  }
+
+  return { nodes, edges }
+}
+
+/**
+ * Dijkstra 最短路径算法
+ */
+function dijkstra(graph, start, end) {
+  const { nodes, edges } = graph
+  const n = nodes.length
+
+  // 初始化距离和前驱节点
+  const dist = Array(n).fill(Infinity)
+  const prev = Array(n).fill(-1)
+  const visited = Array(n).fill(false)
+
+  // 查找起点和终点的索引
+  let startIdx = -1
+  let endIdx = -1
+
+  for (let i = 0; i < nodes.length; i++) {
+    if (Math.abs(nodes[i].x - start.x) < 5 && Math.abs(nodes[i].y - start.y) < 5) {
+      startIdx = i
+    }
+    if (Math.abs(nodes[i].x - end.x) < 5 && Math.abs(nodes[i].y - end.y) < 5) {
+      endIdx = i
+    }
+  }
+
+  if (startIdx === -1 || endIdx === -1) return null
+
+  dist[startIdx] = 0
+
+  // 执行 Dijkstra 算法
+  for (let count = 0; count < n; count++) {
+    let minDist = Infinity
+    let u = -1
+
+    for (let i = 0; i < n; i++) {
+      if (!visited[i] && dist[i] < minDist) {
+        minDist = dist[i]
+        u = i
+      }
+    }
+
+    if (u === -1) break
+
+    visited[u] = true
+
+    // 更新相邻节点的距离
+    for (const edge of edges) {
+      if (edge.from === u && !visited[edge.to]) {
+        if (dist[u] + edge.weight < dist[edge.to]) {
+          dist[edge.to] = dist[u] + edge.weight
+          prev[edge.to] = u
+        }
+      }
+    }
+  }
+
+  // 重建路径
+  const path = []
+  let current = endIdx
+
+  while (current !== -1) {
+    path.unshift({ x: nodes[current].x, y: nodes[current].y })
+    current = prev[current]
+  }
+
+  return path.length > 1 ? path : null
+}
+
+/**
+ * 重置地图
+ */
 function resetMap() {
   selectedSpace.value = null
   selectedSpaceId.value = null
-  searchQuery.value = ''
-  findCarPlate.value = ''
+  searchPlate.value = ''
   navigationPath.value = []
   navigationInfo.value = null
+  startPoint.value = null
   endPoint.value = null
-  if (selectedStartSpotId.value) {
-    handleStartPointChange()
-  }
 }
 
+/**
+ * 清除导航
+ */
 function clearNavigation() {
   navigationPath.value = []
   navigationInfo.value = null
+  startPoint.value = null
   endPoint.value = null
-  if (selectedStartSpotId.value) {
-    handleStartPointChange()
-  }
 }
 
+/**
+ * 获取车位颜色
+ */
 function getSpaceColor(space) {
-  if (space.status === 'free') return '#e0f7fa'
-  if (space.status === 'occupied') return '#ffebee'
-  if (space.status === 'reserved') return '#fff7e6'
-  if (space.status === 'maintenance') return '#fff3e0'
-  return '#f5f5f5'
+  if (space.status === 0) return '#e0f7fa'  // 浅绿色 - 空闲
+  if (space.status === 1) return '#ffebee'  // 浅红色 - 占用
+  if (space.status === 2) return '#fff3e0'  // 浅黄色 - 维护中
+  return '#f5f5f5'  // 默认灰色
 }
 
+/**
+ * 获取车位样式类
+ */
 function getSpaceClass(space) {
   return {
-    'space-free': space.status === 'free',
-    'space-occupied': space.status === 'occupied',
-    'space-reserved': space.status === 'reserved',
-    'space-maintenance': space.status === 'maintenance',
-    'space-selected': space.space_id === selectedSpaceId.value,
+    'space-free': space.status === 0,
+    'space-occupied': space.status === 1,
+    'space-maintenance': space.status === 2,
+    'space-selected': space.space_id === selectedSpaceId.value
   }
 }
 
+/**
+ * 获取状态标签
+ */
 function getStatusLabel(space) {
-  const labels = {
-    free: '空闲',
-    occupied: '占用',
-    reserved: '已预约',
-    maintenance: '维护中',
-  }
+  const labels = { 0: '空闲', 1: '占用', 2: '维护中' }
   return labels[space.status] || '未知'
 }
 
+/**
+ * 获取状态样式类
+ */
 function getStatusClass(space) {
   const classes = {
-    free: 'status-free',
-    occupied: 'status-occupied',
-    reserved: 'status-reserved',
-    maintenance: 'status-maintenance',
+    0: 'status-free',
+    1: 'status-occupied',
+    2: 'status-maintenance'
   }
   return classes[space.status] || ''
 }
 
+/**
+ * 提取车位号
+ */
 function extractSpaceNumber(spaceId) {
-  return (spaceId || '').replace('space_', '')
+  return spaceId.replace('space_', '')
 }
 
+/**
+ * 格式化时间
+ */
 function formatTime(timeStr) {
-  if (!timeStr) return '-'
   const date = new Date(timeStr)
-  if (Number.isNaN(date.getTime())) return '-'
   return date.toLocaleTimeString('zh-CN')
 }
 </script>
@@ -615,44 +679,12 @@ function formatTime(timeStr) {
 
 .search-input {
   flex: 1;
-  max-width: 250px;
+  max-width: 400px;
   padding: 10px 16px;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   font-size: 14px;
   transition: all 0.2s;
-}
-
-.divider {
-  width: 1px;
-  height: 24px;
-  background: #e2e8f0;
-  margin: 0 8px;
-}
-
-.find-car-btn {
-  background: #10b981 !important;
-}
-
-.find-car-btn:hover {
-  background: #059669 !important;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important;
-}
-
-.location-select {
-  min-width: 220px;
-  padding: 10px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 14px;
-  color: #334155;
-  background: #fff;
-}
-
-.location-select:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .search-input:focus {
@@ -738,10 +770,6 @@ function formatTime(timeStr) {
 
 .space-maintenance .space-rect {
   fill: #fff3e0;
-}
-
-.space-reserved .space-rect {
-  fill: #fff7e6;
 }
 
 .space-selected .space-rect {
@@ -835,10 +863,6 @@ function formatTime(timeStr) {
 
 .value.status-maintenance {
   color: #f59e0b;
-}
-
-.value.status-reserved {
-  color: #ea580c;
 }
 
 .detail-actions {

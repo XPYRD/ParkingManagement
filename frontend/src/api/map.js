@@ -8,9 +8,9 @@
  * 4. 路径规划 - 计算导航路径
  */
 
-import axios from './request'
+import axios from 'axios'
 
-const API_BASE = ''  // request.js 已经包含了 /api/v1 前缀
+const API_BASE = '/api/v1'
 
 // ========== 地图数据接口 ==========
 
@@ -47,24 +47,6 @@ export async function findCarByPlate(plateNumber) {
     return response.data
   } catch (error) {
     console.error('寻车失败:', error)
-    throw error
-  }
-}
-
-/**
- * 获取反向寻车导航起点列表
- *
- * @param {string} [floor] - 楼层，可选
- * @returns {Promise<{code: number, data: Array<{id:number,space_id:string,floor:string,label:string}>}>}
- */
-export async function getNavigationStartPoints(floor) {
-  try {
-    const response = await axios.get(`${API_BASE}/map/start-points/`, {
-      params: floor ? { floor } : undefined,
-    })
-    return response.data
-  } catch (error) {
-    console.error('获取导航起点失败:', error)
     throw error
   }
 }
@@ -107,14 +89,11 @@ export async function pushSpaceStatusEvent(event) {
  */
 export async function calculateNavigationPath(startSpotId, endSpotId) {
   try {
-    // 强制使用统一封装的 axios，它会读取 .env 中的 8080 端口
-    // 注意：DRF url_path='find-path' 因此必须使用带短划线的 URL 路径，不要用下划线
-    const response = await axios.post('/parking/navigation/find-path/', {
+    const response = await axios.post(`${API_BASE}/parking/navigation/find-path/`, {
       start_spot_id: startSpotId,
       end_spot_id: endSpotId
     })
-    // 注意：request.interceptors.response 已经处理了 response.data，所以这里直接返回 response
-    return response
+    return response.data
   } catch (error) {
     console.error('计算导航路径失败:', error)
     throw error
