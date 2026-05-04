@@ -1,0 +1,10 @@
+字段名称,类型,长度,字段说明,主键,是否为空
+id,BigInt,-,主键 ID,是,否
+alert_type,Varchar,12,告警类型,否,否
+title,Varchar,100,告警标题,否,否
+detail,Text,-,详细描述,否,是
+location,Varchar,100,位置,否,是
+severity,Varchar,12,严重程度,否,否
+status,Varchar,15,处理状态,否,否
+resolved_at,DateTime,-,解决时间,否,是
+created_at,DateTime,-,创建时间,否,否

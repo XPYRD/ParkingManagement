@@ -1,0 +1,15 @@
+字段名称,类型,长度,字段说明,主键,是否为空
+id,BigInt,-,主键 ID,是,否
+username,Varchar,150,用户名（唯一）,否,否
+password,Varchar,128,密码,否,否
+email,Varchar,254,邮箱,否,是
+phone,Varchar,20,手机号,否,是
+avatar,Varchar,255,头像地址,否,是
+is_vip,Boolean,-,是否为高级会员,否,否
+status,Varchar,10,账户状态,否,否
+two_factor_enabled,Boolean,-,是否开启两步验证,否,否
+totp_secret,Varchar,32,2FA 密钥,否,是
+last_login,DateTime,-,最后登录时间,否,是
+date_joined,DateTime,-,注册时间,否,否
+is_staff,Boolean,-,是否为管理员,否,否
+is_superuser,Boolean,-,是否为超级管理员,否,否

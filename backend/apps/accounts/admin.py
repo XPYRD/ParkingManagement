@@ -21,6 +21,7 @@ class UserAdmin(BaseUserAdmin):
     list_display = ['username', 'phone', 'is_vip', 'status', 'is_staff', 'date_joined']
     list_filter = ['status', 'is_vip', 'is_staff', 'is_active']
     search_fields = ['username', 'phone', 'email']
+    filter_horizontal = ['groups']
     # 在编辑表单中增加自定义字段
     fieldsets = _remove_user_permissions(BaseUserAdmin.fieldsets) + (
         ('扩展信息', {'fields': ('phone', 'avatar', 'is_vip', 'status')}),

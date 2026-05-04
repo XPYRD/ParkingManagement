@@ -1,0 +1,10 @@
+字段名称,类型,长度,字段说明,主键,是否为空
+id,BigInt,-,主键 ID,是,否
+user_id,BigInt,-,用户 ID,否,否
+plan_ref_id,BigInt,-,关联套餐 ID,否,是
+plan,Varchar,10,套餐类型,否,否
+price,Decimal,"10,2",价格,否,否
+start_date,Date,-,开始日期,否,否
+end_date,Date,-,结束日期,否,否
+is_active,Boolean,-,是否生效,否,否
+created_at,DateTime,-,创建时间,否,否

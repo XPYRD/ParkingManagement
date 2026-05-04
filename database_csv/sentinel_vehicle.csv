@@ -1,0 +1,10 @@
+字段名称,类型,长度,字段说明,主键,是否为空
+id,BigInt,-,主键 ID,是,否
+owner_id,BigInt,-,所属用户 ID,否,否
+plate_number,Varchar,20,车牌号（唯一）,否,否
+brand,Varchar,50,品牌,否,否
+model,Varchar,50,型号,否,是
+color,Varchar,20,颜色,否,是
+is_primary,Boolean,-,是否默认车辆,否,否
+created_at,DateTime,-,创建时间,否,否
+updated_at,DateTime,-,更新时间,否,否

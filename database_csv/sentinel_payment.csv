@@ -1,0 +1,10 @@
+字段名称,类型,长度,字段说明,主键,是否为空
+id,BigInt,-,主键 ID,是,否
+user_id,BigInt,-,用户 ID,否,否
+session_id,BigInt,-,停车会话 ID,否,是
+transaction_id,Varchar,64,交易 ID（唯一）,否,否
+amount,Decimal,"10,2",金额,否,否
+method,Varchar,10,支付方式,否,否
+status,Varchar,10,支付状态,否,否
+remark,Varchar,200,备注,否,是
+created_at,DateTime,-,创建时间,否,否

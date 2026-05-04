@@ -1,0 +1,11 @@
+字段名称,类型,长度,字段说明,主键,是否为空
+id,BigInt,-,主键 ID,是,否
+user_id,BigInt,-,提交人 ID,否,否
+ticket_id,Varchar,20,工单编号（唯一）,否,否
+ticket_type,Varchar,15,反馈类型,否,否
+title,Varchar,100,标题,否,否
+description,Text,-,详细描述,否,否
+attachment,Varchar,255,附件,否,是
+status,Varchar,12,工单状态,否,否
+created_at,DateTime,-,创建时间,否,否
+updated_at,DateTime,-,更新时间,否,否

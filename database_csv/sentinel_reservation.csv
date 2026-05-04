@@ -1,0 +1,16 @@
+字段名称,类型,长度,字段说明,主键,是否为空
+id,BigInt,-,主键 ID,是,否
+user_id,BigInt,-,用户 ID,否,否
+spot_id,BigInt,-,车位 ID,否,否
+date,Date,-,预约日期,否,否
+end_date,Date,-,离开日期,否,是
+start_time,Time,-,开始时间,否,否
+end_time,Time,-,结束时间,否,否
+total_amount,Decimal,"10,2",总费用,否,否
+payment_method,Varchar,20,支付方式,否,是
+payment_transaction_id,Varchar,64,支付交易 ID,否,是
+booking_code,Varchar,30,预约编号（唯一）,否,否
+qr_code,Varchar,255,入场二维码,否,是
+status,Varchar,12,预约状态,否,否
+created_at,DateTime,-,创建时间,否,否
+updated_at,DateTime,-,更新时间,否,否

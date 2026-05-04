@@ -1,0 +1,12 @@
+字段名称,类型,长度,字段说明,主键,是否为空
+id,BigInt,-,主键 ID,是,否
+code,Varchar,20,套餐编码（唯一）,否,否
+name,Varchar,50,套餐名称,否,否
+price,Decimal,"10,2",套餐价格,否,否
+duration_days,Int,-,有效天数,否,否
+description,Varchar,200,套餐描述,否,是
+is_active,Boolean,-,是否上架,否,否
+is_recommended,Boolean,-,是否推荐,否,否
+sort_order,Int,-,排序,否,否
+created_at,DateTime,-,创建时间,否,否
+updated_at,DateTime,-,更新时间,否,否

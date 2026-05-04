@@ -1,0 +1,19 @@
+字段名称,类型,长度,字段说明,主键,是否为空
+id,BigInt,-,主键 ID,是,否
+floor,Varchar,10,楼层,否,否
+space_id,Varchar,50,车位编号,否,否
+node_type,Varchar,20,节点类型（车位/地点）,否,否
+location_name,Varchar,50,地点名称,否,是
+qr_code_token,Varchar,100,二维码唯一识别码,否,否
+status,Boolean,-,是否损坏,否,否
+type,Boolean,-,是否充电桩车位,否,否
+reserved_plate,Varchar,20,预约车牌,否,是
+current_plate,Varchar,20,当前停放车牌,否,是
+bind_time,DateTime,-,绑定时间,否,是
+last_updated,DateTime,-,最后状态更新时间,否,否
+center_x,Float,-,SVG 中心 X 坐标,否,是
+center_y,Float,-,SVG 中心 Y 坐标,否,是
+x,Float,-,SVG 相对坐标 X,否,是
+y,Float,-,SVG 相对坐标 Y,否,是
+rotation,Int,-,旋转角度,否,否
+created_at,DateTime,-,创建时间,否,否

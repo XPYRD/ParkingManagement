@@ -1,0 +1,9 @@
+字段名称,类型,长度,字段说明,主键,是否为空
+id,BigInt,-,主键 ID,是,否
+vehicle_id,BigInt,-,车辆 ID,否,否
+spot_id,BigInt,-,车位 ID,否,是
+entry_time,DateTime,-,入场时间,否,否
+exit_time,DateTime,-,出场时间,否,是
+amount,Decimal,"10,2",停车费用,否,否
+payment_status,Varchar,10,支付状态,否,否
+created_at,DateTime,-,创建时间,否,否
