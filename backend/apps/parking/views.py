@@ -39,7 +39,7 @@ from rest_framework.response import Response
 logger = logging.getLogger(__name__)
 
 from .models import ParkingSession, Reservation, SpotConnection, ParkingSpace
-from payments.models import Subscription
+from payments.models import PricingRule, Subscription
 from .serializers import (
     ParkingSpotSerializer,
     ParkingSessionSerializer,
@@ -353,7 +353,7 @@ class ParkingSessionViewSet(viewsets.ModelViewSet):
         ).exists()
 
         if has_active_sub:
-            sessions.filter().exclude(
+            sessions.exclude(
                 amount=0,
                 payment_status=ParkingSession.PaymentStatus.PAID,
             ).update(
@@ -373,13 +373,51 @@ class ParkingSessionViewSet(viewsets.ModelViewSet):
         if not plate:
             return Response({'detail': '缺少 plate 参数'}, status=status.HTTP_400_BAD_REQUEST)
 
-        from accounts.models import Vehicle
+        from accounts.models import Vehicle, User
+        from payments.models import PricingRule, Subscription
+
         vehicle = Vehicle.objects.filter(plate_number__iexact=plate).first()
-        if not vehicle:
-            return Response({'found': False, 'detail': '未找到该车辆'}, status=status.HTTP_404_NOT_FOUND)
+        session = None
+
+        if vehicle:
+            session = ParkingSession.objects.filter(
+                vehicle=vehicle, exit_time__isnull=True
+            ).first()
+
+        # 兜底：车辆未注册或无会话时，检查是否有车位记录了该车牌（模拟进场遗留）
+        if not session:
+            space_with_plate = ParkingSpace.objects.filter(
+                current_plate__iexact=plate
+            ).exclude(current_plate__isnull=True).exclude(current_plate='').first()
+
+            if space_with_plate:
+                # 自动创建车辆（若不存在）
+                if not vehicle:
+                    owner = request.user if request.user.is_authenticated else None
+                    if owner is None:
+                        owner = User.objects.filter(is_staff=True).order_by('id').first()
+                    if owner:
+                        vehicle = Vehicle.objects.create(
+                            owner=owner,
+                            plate_number=plate,
+                            brand='模拟车辆',
+                            model='自动创建',
+                        )
+
+                # 自动创建会话
+                if vehicle:
+                    session = ParkingSession.objects.create(
+                        vehicle=vehicle,
+                        spot=space_with_plate,
+                        entry_time=space_with_plate.bind_time or space_with_plate.last_updated or timezone.now(),
+                        amount=None,
+                        payment_status=ParkingSession.PaymentStatus.PENDING,
+                    )
+
+        if not session:
+            return Response({'found': False, 'detail': '该车辆当前无停车会话'}, status=status.HTTP_404_NOT_FOUND)
 
         # 检查车主是否有有效订阅
-        from payments.models import Subscription
         today = timezone.localdate()
         has_active_sub = Subscription.objects.filter(
             user=vehicle.owner,
@@ -387,12 +425,6 @@ class ParkingSessionViewSet(viewsets.ModelViewSet):
             start_date__lte=today,
             end_date__gte=today,
         ).exists()
-
-        session = ParkingSession.objects.filter(
-            vehicle=vehicle, exit_time__isnull=True
-        ).first()
-        if not session:
-            return Response({'found': False, 'detail': '该车辆当前无停车会话'}, status=status.HTTP_404_NOT_FOUND)
 
         # 有订阅则自动标记免费
         if has_active_sub and session.payment_status != ParkingSession.PaymentStatus.PAID:
@@ -407,13 +439,21 @@ class ParkingSessionViewSet(viewsets.ModelViewSet):
         mins = total_minutes % 60
         chargeable_hours = max(1, hours + (1 if mins > 0 else 0))
 
+        # 计算应缴金额：若已存储金额则使用，否则按定价规则实时计算
+        amount = session.amount
+        if amount is None:
+            hourly_rate = PricingRule.get_active_value(
+                PricingRule.RateType.HOURLY_STANDARD, Decimal('6.00')
+            ) or Decimal('6.00')
+            amount = hourly_rate * chargeable_hours
+
         return Response({
             'session_id': session.id,
             'plate_number': vehicle.plate_number,
             'entry_time': session.entry_time.isoformat(),
             'duration_text': f'{hours}小时{mins}分钟',
             'chargeable_hours': chargeable_hours,
-            'amount': float(session.amount or 0),
+            'amount': float(amount or 0),
             'payment_state': session.payment_status,
             'found': True,
             'subscription_free': has_active_sub,
@@ -879,6 +919,21 @@ class HardwareWebhookViewSet(viewsets.ViewSet):
             from accounts.models import Vehicle
             from payments.models import Subscription
             vehicle = Vehicle.objects.filter(plate_number__iexact=plate_number or '').first()
+
+            # 模拟场景：车辆未注册时自动创建，使进出场流程闭环
+            if not vehicle and plate_number:
+                owner = request.user if request.user.is_authenticated else None
+                if owner is None:
+                    from accounts.models import User
+                    owner = User.objects.filter(is_staff=True).order_by('id').first()
+                if owner:
+                    vehicle = Vehicle.objects.create(
+                        owner=owner,
+                        plate_number=plate_number,
+                        brand='模拟车辆',
+                        model='自动创建',
+                    )
+
             if vehicle:
                 today = timezone.localdate()
                 has_active_sub = Subscription.objects.filter(

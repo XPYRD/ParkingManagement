@@ -8,7 +8,9 @@
       "Bash(pip index *)",
       "Bash(pip download *)",
       "Bash(set PYTHONIOENCODING=utf-8)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(npx vite *)",
+      "Bash(npm run *)"
     ]
   }
 }

@@ -6,14 +6,6 @@
         <h1 class="text-3xl font-extrabold text-primary tracking-tight font-headline">用户中心</h1>
         <p class="text-secondary text-sm mt-1">管理系统注册用户、车辆绑定与高级订阅状态</p>
       </div>
-      <div class="flex gap-3">
-        <el-button plain shadow="sm">
-          <span class="material-symbols-outlined text-sm mr-1">person_add</span> 添加用户
-        </el-button>
-        <el-button type="primary" shadow="md">
-          <span class="material-symbols-outlined text-sm mr-1">campaign</span> 发送全员通知
-        </el-button>
-      </div>
     </header>
 
     <div class="flex-1 bg-surface-container-lowest rounded-2xl border border-outline-variant/20 shadow-sm flex flex-col overflow-hidden">

@@ -717,25 +717,30 @@ async function simulateVehicleEntry() {
 
   markEntryLoading.value = true
   try {
-    let quote = null
+    // 检查车辆是否已在场：by-plate 返回 200 且 found=true 表示已在场，404/400 表示未在场
+    let alreadyInLot = false
     try {
-      quote = await quickPayQuoteNoLogin(plate)
+      const quote = await quickPayQuoteNoLogin(plate)
+      if (quote?.found === true) {
+        alreadyInLot = true
+        quickPayQuote.value = {
+          session_id: quote.session_id,
+          duration_text: quote.duration_text || '--',
+          chargeable_hours: quote.chargeable_hours ?? 0,
+          amount: quote.amount || '0.00',
+          payment_state: quote.payment_state || 'charging',
+          leave_tip: quote.leave_tip || '',
+        }
+      }
     } catch (quoteErr) {
       const code = Number(quoteErr?.response?.status || 0)
       if (![400, 404].includes(code)) {
         throw quoteErr
       }
+      // 404/400 = 车辆未在场，继续执行入场
     }
 
-    if (quote?.found !== false) {
-      quickPayQuote.value = {
-        session_id: quote?.session_id,
-        duration_text: quote?.duration_text || '--',
-        chargeable_hours: quote?.chargeable_hours ?? 0,
-        amount: quote?.amount || '0.00',
-        payment_state: quote?.payment_state || 'charging',
-        leave_tip: quote?.leave_tip || '',
-      }
+    if (alreadyInLot) {
       ElMessage.warning('该车辆已在场，无需重复入场')
       return
     }

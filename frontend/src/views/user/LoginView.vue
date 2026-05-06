@@ -7,10 +7,6 @@
         <router-link to="/" class="text-xl font-bold tracking-tighter text-primary font-headline">
           Sentinel
         </router-link>
-        <div class="hidden md:flex gap-8 items-center">
-          <a href="#" class="text-sm font-semibold text-secondary hover:text-primary transition-colors">Support</a>
-          <a href="#" class="text-sm font-semibold text-secondary hover:text-primary transition-colors">Security</a>
-        </div>
         <router-link to="/login" class="text-sm font-semibold text-primary border-b-2 border-primary pb-1">
           Sign In
         </router-link>
@@ -68,7 +64,6 @@
               <el-form-item prop="password">
                 <div class="flex justify-between items-center px-1 mb-2">
                   <label class="block text-xs font-bold text-secondary uppercase tracking-widest">密码</label>
-                  <a class="text-xs text-primary font-semibold hover:opacity-70 cursor-pointer">忘记密码？</a>
                 </div>
                 <el-input
                   v-model="loginForm.password"
@@ -98,28 +93,6 @@
               </el-button>
             </el-form>
 
-            <!-- 分割线 -->
-            <div class="relative my-10 text-center">
-              <div class="absolute inset-0 flex items-center">
-                <div class="w-full border-t border-outline-variant/15"></div>
-              </div>
-              <span class="relative px-4 bg-surface-container-lowest text-outline text-[10px] font-bold uppercase tracking-[0.2em]">
-                或者使用其他方式登录
-              </span>
-            </div>
-
-            <!-- 第三方登录 -->
-            <div class="grid grid-cols-2 gap-4 mb-10">
-              <el-button class="!py-3" @click="ElMessage.info('微信登录暂未接入')">
-                <span class="material-symbols-outlined text-green-600 text-lg mr-2">chat</span>
-                微信登录
-              </el-button>
-              <el-button class="!py-3" @click="ElMessage.info('验证码登录暂未实现')">
-                <span class="material-symbols-outlined text-blue-500 text-lg mr-2">smartphone</span>
-                验证码登录
-              </el-button>
-            </div>
-
             <!-- 注册跳转 -->
             <footer class="text-center">
               <p class="text-sm text-secondary">
@@ -140,8 +113,6 @@
           <p class="text-xs text-secondary mt-1">© 2024 Sentinel Parking Systems. All rights reserved.</p>
         </div>
         <div class="flex gap-6">
-          <a href="#" class="text-xs text-secondary hover:text-primary transition-colors">服务条款</a>
-          <a href="#" class="text-xs text-secondary hover:text-primary transition-colors">隐私政策</a>
           <router-link to="/admin/login" class="text-xs text-primary font-bold hover:opacity-80 transition-opacity flex items-center gap-1">
             <span class="material-symbols-outlined text-[14px]">admin_panel_settings</span>
             管理员入口

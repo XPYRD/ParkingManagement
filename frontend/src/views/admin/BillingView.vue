@@ -254,17 +254,6 @@ const loadRules = async () => {
    }
 }
 
-const toggleRule = async (rule) => {
-   try {
-      // 可以在此处调用 API
-      await updatePricingRule(rule.id, { is_active: rule.is_active })
-      ElMessage.success('状态已更改')
-   } catch (e) {
-      rule.is_active = !rule.is_active
-      ElMessage.error('更改失败')
-   }
-}
-
 const loadTransactions = async () => {
    loadingTransactions.value = true
    try {

@@ -30,11 +30,6 @@
         <!-- 右侧操作区 -->
         <div class="flex gap-2 items-center">
           <template v-if="authStore.isLoggedIn">
-            <button
-              class="material-symbols-outlined text-secondary hover:bg-surface-container p-2 rounded-lg transition-all active:scale-95"
-            >
-              notifications
-            </button>
             <el-dropdown trigger="hover" @command="handleCommand">
               <div class="material-symbols-outlined text-secondary hover:bg-surface-container p-2 rounded-lg transition-all active:scale-95 cursor-pointer outline-none">
                 account_circle

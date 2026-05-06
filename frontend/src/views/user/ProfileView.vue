@@ -29,11 +29,7 @@
           <h3 class="text-sm font-bold text-on-surface uppercase tracking-widest mb-4">基本信息</h3>
           <el-form label-position="top" class="space-y-4">
             <el-form-item label="手机号码">
-              <el-input v-model="profile.phone" size="large" readonly>
-                 <template #append>
-                    <el-button link type="primary">修改</el-button>
-                 </template>
-              </el-input>
+              <el-input v-model="profile.phone" size="large" readonly />
             </el-form-item>
             <el-form-item label="常用邮箱">
               <el-input v-model="profile.email" size="large" />
@@ -122,7 +118,6 @@
         <section>
           <div class="flex justify-between items-center mb-6">
             <h2 class="text-xl font-bold text-on-surface">最近预订</h2>
-            <el-button link type="primary" v-if="reservations.length > 0">查看全部</el-button>
           </div>
           
           <div class="space-y-4" v-loading="loadingRes">
@@ -142,7 +137,6 @@
                      {{ res.status_label || res.status }}
                    </span>
                    <el-button v-if="res.status === 'pending' || res.status === 'confirmed'" size="small" plain type="danger" @click="handleCancelRes(res.id)">取消</el-button>
-                   <el-button v-else size="small" plain>再订一次</el-button>
                 </div>
              </div>
              

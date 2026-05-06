@@ -80,10 +80,6 @@
                 </div>
               </div>
 
-              <el-button type="default" size="large" class="!w-full !rounded-xl !font-bold !text-primary" @click="startNavigation">
-                <span class="material-symbols-outlined mr-2">navigation</span>
-                开始步行导航
-              </el-button>
             </div>
           </div>
         </transition>
@@ -186,7 +182,4 @@ async function handleSearch() {
   }
 }
 
-function startNavigation() {
-  ElMessage.success('正在规划步行路线...已开启实景导航')
-}
 </script>

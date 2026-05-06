@@ -7,11 +7,6 @@
           <h1 class="text-3xl font-extrabold text-primary tracking-tight font-headline">安全预警中心</h1>
           <p class="text-secondary text-sm mt-1">全局异常监控、紧急事件处理与安防调度指挥</p>
         </div>
-        <div class="flex gap-3">
-          <el-button type="danger" shadow="md">
-            <span class="material-symbols-outlined text-sm mr-1">emergency</span> 启动应急预案
-          </el-button>
-        </div>
       </header>
 
       <!-- 顶部统计卡片 -->
@@ -89,7 +84,6 @@
             <!-- 操作 -->
             <div class="flex items-center gap-2 md:flex-col lg:flex-row flex-shrink-0">
                <el-button v-if="alert.status === 'pending'" type="primary" size="small" @click="handleResolve(alert.id)">标记解决</el-button>
-               <el-button plain size="small">查看监控</el-button>
             </div>
           </div>
           

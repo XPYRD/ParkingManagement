@@ -72,9 +72,6 @@
               <el-button type="warning" size="large" class="!rounded-xl !font-bold !px-8 shadow-lg shadow-amber-500/30 border-0" @click="handlePay" :disabled="currentSession.payment_status === 'paid'">
                 {{ currentSession.payment_status === 'paid' ? '已结清' : '立即缴费' }}
               </el-button>
-              <el-button size="large" class="!rounded-xl !font-bold !bg-white/20 !text-white !border-0 hover:!bg-white/30 backdrop-blur-sm">
-                查看明细
-              </el-button>
             </div>
           </div>
           <div class="rounded-2xl p-8 bg-surface-container-low text-center text-secondary border border-outline-variant/20" v-else>

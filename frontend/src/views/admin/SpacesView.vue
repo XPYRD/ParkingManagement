@@ -6,14 +6,6 @@
         <h1 class="text-3xl font-extrabold text-primary tracking-tight font-headline">车位资产管理</h1>
         <p class="text-secondary text-sm mt-1">全局车位监控与维护调度</p>
       </div>
-      <div class="flex gap-3">
-        <el-button plain shadow="sm">
-          <span class="material-symbols-outlined text-sm mr-1">download</span> 导出数据
-        </el-button>
-        <el-button type="primary" shadow="md">
-          <span class="material-symbols-outlined text-sm mr-1">add</span> 新增车位
-        </el-button>
-      </div>
     </header>
 
     <!-- 顶部统计 -->

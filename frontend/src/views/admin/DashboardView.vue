@@ -7,13 +7,6 @@
         <h1 class="text-3xl font-extrabold text-primary tracking-tight font-headline">仪表盘</h1>
         <p class="text-secondary text-sm mt-1">实时数据概览与系统运行状况</p>
       </div>
-      <div class="mt-4 md:mt-0 flex items-center gap-4">
-        <el-date-picker v-model="dateRange" type="daterange" range-separator="至" start-placeholder="开始" end-placeholder="结束" size="small" />
-        <el-button size="small" class="!rounded-lg">
-          <span class="material-symbols-outlined text-sm mr-1">refresh</span>
-          刷新数据
-        </el-button>
-      </div>
     </header>
 
     <!-- ===== 统计摘要卡片 ===== -->
@@ -51,7 +44,6 @@
             <h3 class="font-bold text-on-surface">营收趋势</h3>
             <p class="text-xs text-secondary mt-1">近7天营收数据</p>
           </div>
-          <el-segmented v-model="revenueView" :options="['日', '周', '月']" size="small" />
         </div>
         <!-- 简化图表 — 用柱状条表示 -->
         <div class="flex items-end gap-3 h-48 px-2">
@@ -157,9 +149,6 @@ import { ref, onMounted } from 'vue'
 import { getDashboardOverview } from '@/api/dashboard'
 import { ElMessage } from 'element-plus'
 
-const dateRange = ref([])
-const revenueView = ref('日')
-
 const summaryCards = ref([
   { icon: 'monetization_on', label: '今日营收', value: '¥--', trend: 0, bgClass: 'bg-primary/10', iconClass: 'text-primary' },
   { icon: 'directions_car', label: '在场车辆', value: '--', trend: 0, bgClass: 'bg-blue-50', iconClass: 'text-blue-600' },
@@ -173,8 +162,6 @@ const maxRevenue = ref(1)
 const occupancyRate = ref(0)
 const occupancyBreakdown = ref([])
 
-const hourlyTraffic = ref([])
-const maxHourlyTraffic = ref(1)
 const recentPayments = ref([])
 
 function formatTime(isoStr) {
@@ -229,11 +216,6 @@ async function loadData() {
       revenueData.value = [{ label: '今日', value: data.daily_revenue || 0 }]
     }
     maxRevenue.value = Math.max(...revenueData.value.map(d => d.value), 1)
-
-    // 分时流量 - 仅显示 6:00~22:00 活跃时段
-    const rawTraffic = data.hourly_traffic || []
-    hourlyTraffic.value = rawTraffic.filter(h => h.hour >= 6 && h.hour <= 22)
-    maxHourlyTraffic.value = Math.max(...hourlyTraffic.value.map(h => h.count), 1)
 
     // 最近交易
     recentPayments.value = data.recent_payments || []

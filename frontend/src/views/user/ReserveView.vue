@@ -70,28 +70,50 @@
 
           <h3 class="text-sm font-bold uppercase tracking-widest text-white/80 mb-6">预估明细</h3>
 
-          <div class="space-y-4 mb-8">
-            <div class="flex justify-between items-center text-sm">
-              <span class="text-white/70">预约基础费</span>
-              <span class="font-bold">¥ {{ dailyReservationFee.toFixed(2) }}/天</span>
+          <!-- 订阅用户：免费 -->
+          <div v-if="hasActiveSubscription" class="space-y-4 mb-8">
+            <div class="flex items-center gap-3 p-4 rounded-xl bg-white/15">
+              <span class="material-symbols-outlined text-amber-300 text-2xl">star</span>
+              <div>
+                <p class="font-bold text-amber-300">订阅用户 · 免费预约</p>
+                <p class="text-xs text-white/60 mt-0.5">当前套餐有效期内预约费用全免</p>
+              </div>
             </div>
             <div class="flex justify-between items-center text-sm">
               <span class="text-white/70">计费天数</span>
               <span class="font-bold">{{ billingDays }} 天</span>
             </div>
-            <div class="flex justify-between items-center text-sm" v-if="reserveForm.type === 'ev'">
-              <span class="text-white/70">充电桩附加费</span>
-              <span class="font-bold">¥ {{ evSurcharge.toFixed(2) }}</span>
-            </div>
-
             <div class="border-t border-white/20 pt-4 mt-2 flex justify-between items-center">
               <span class="font-bold uppercase tracking-widest">预付总额</span>
-              <span class="text-3xl font-black font-headline text-amber-300">¥ {{ totalFee.toFixed(2) }}</span>
+              <span class="text-3xl font-black font-headline text-amber-300">¥ 0.00</span>
             </div>
           </div>
 
+          <!-- 普通用户：正常计费 -->
+          <template v-else>
+            <div class="space-y-4 mb-8">
+              <div class="flex justify-between items-center text-sm">
+                <span class="text-white/70">预约基础费</span>
+                <span class="font-bold">¥ {{ dailyReservationFee.toFixed(2) }}/天</span>
+              </div>
+              <div class="flex justify-between items-center text-sm">
+                <span class="text-white/70">计费天数</span>
+                <span class="font-bold">{{ billingDays }} 天</span>
+              </div>
+              <div class="flex justify-between items-center text-sm" v-if="reserveForm.type === 'ev'">
+                <span class="text-white/70">充电桩附加费</span>
+                <span class="font-bold">¥ {{ evSurcharge.toFixed(2) }}</span>
+              </div>
+
+              <div class="border-t border-white/20 pt-4 mt-2 flex justify-between items-center">
+                <span class="font-bold uppercase tracking-widest">预付总额</span>
+                <span class="text-3xl font-black font-headline text-amber-300">¥ {{ totalFee.toFixed(2) }}</span>
+              </div>
+            </div>
+          </template>
+
           <el-button type="warning" size="large" class="!w-full !rounded-xl !font-bold !py-6 shadow-xl shadow-amber-500/20 border-0" :loading="loading" @click="handleConfirm">
-            确认并支付
+            {{ hasActiveSubscription ? '确认预约' : '确认并支付' }}
           </el-button>
           <p class="text-[10px] text-white/50 text-center mt-4">
             *预约开始前2小时可全额退款。超时未入场不予退还。
@@ -155,7 +177,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { getVehicles } from '@/api/user'
 import { getSpots, createReservation } from '@/api/parking'
-import { getPricingRules, getUserBalance, payWithBalance, refundBalancePayment } from '@/api/payment'
+import { getPricingRules, getUserBalance, getSubscriptions, payWithBalance, refundBalancePayment } from '@/api/payment'
 
 const router = useRouter()
 
@@ -177,6 +199,7 @@ const showPaymentDialog = ref(false)
 const selectedPaymentMethod = ref('balance')
 const userBalance = ref(0)
 const loadingBalance = ref(false)
+const hasActiveSubscription = ref(false)
 
 const vehicleTypeLabelMap = {
   car: '小型车',
@@ -265,6 +288,19 @@ async function loadPricingRules() {
   }
 }
 
+async function checkSubscription() {
+  try {
+    const res = await getSubscriptions({ is_active: true })
+    const subs = res.results || res || []
+    const today = new Date().toISOString().slice(0, 10)
+    hasActiveSubscription.value = subs.some(
+      (s) => s.is_active && s.start_date <= today && s.end_date >= today
+    )
+  } catch (err) {
+    hasActiveSubscription.value = false
+  }
+}
+
 async function loadUserBalance() {
   loadingBalance.value = true
   try {
@@ -279,8 +315,7 @@ async function loadUserBalance() {
 }
 
 onMounted(async () => {
-  await loadPricingRules()
-  await loadUserBalance()
+  await Promise.all([loadPricingRules(), loadUserBalance(), checkSubscription()])
   try {
     const res = await getVehicles()
     myCars.value = res.results || res
@@ -299,6 +334,17 @@ async function handleConfirm() {
   }
   if (!reserveForm.vehicle) {
     ElMessage.warning('请选择关联的车辆')
+    return
+  }
+
+  // 订阅用户跳过支付流程，直接创建预约
+  if (hasActiveSubscription.value) {
+    selectedPaymentMethod.value = 'subscription'
+    ElMessageBox.confirm(
+      '您是订阅用户，本次预约免费。确认预约？',
+      '确认预约',
+      { confirmButtonText: '确认预约', cancelButtonText: '取消', type: 'info' }
+    ).then(() => submitReservation()).catch(() => {})
     return
   }
 
@@ -322,15 +368,17 @@ async function submitReservation() {
   loading.value = true
   let balancePaid = false
   let balanceTxnId = ''
+  const isSubscription = hasActiveSubscription.value || selectedPaymentMethod.value === 'subscription'
   try {
-    const spotRes = await getSpots({ status: 'free', spot_type: reserveForm.type })
+    const spotRes = await getSpots({ status: 'free', type: reserveForm.type })
     const spots = spotRes.results || spotRes
     if (spots.length === 0) {
       ElMessage.error('抱歉，当前类别车位已被预约满，请更换类型！')
       return
     }
 
-    if (selectedPaymentMethod.value === 'balance') {
+    // 非订阅用户且选择余额支付时，先扣款
+    if (!isSubscription && selectedPaymentMethod.value === 'balance') {
       const payRes = await payWithBalance(totalFee.value, null, '预约车位费用')
       balancePaid = true
       balanceTxnId = String(payRes?.transaction_id || payRes?.data?.transaction_id || '')
@@ -342,19 +390,29 @@ async function submitReservation() {
       end_date: toDateString(new Date(reserveForm.endDate)),
       start_time: reserveForm.startTime,
       end_time: reserveForm.endTime,
-      total_amount: totalFee.value,
-      payment_method: selectedPaymentMethod.value
+      total_amount: isSubscription ? 0 : totalFee.value,
+      payment_method: isSubscription ? 'subscription' : selectedPaymentMethod.value,
+      vehicle: reserveForm.vehicle,
+      spot_type: reserveForm.type
     })
 
-    ElMessage.success('预约成功，请准时入场！')
+    ElMessage.success(isSubscription ? '预约成功，订阅用户免费，请准时入场！' : '预约成功，请准时入场！')
     showPaymentDialog.value = false
     await loadUserBalance()
     router.push('/profile')
   } catch (err) {
-    const detail = String(err?.response?.data?.detail || '')
-    if (selectedPaymentMethod.value === 'balance' && detail.includes('余额不足')) {
+    const data = err?.response?.data || {}
+    const detail = String(data?.detail || '')
+    // 收集 DRF 字段级验证错误
+    const fieldErrors = Object.entries(data)
+      .filter(([key]) => key !== 'detail')
+      .map(([, msgs]) => (Array.isArray(msgs) ? msgs[0] : String(msgs)))
+      .filter(Boolean)
+    const firstFieldError = fieldErrors[0] || ''
+
+    if (!isSubscription && selectedPaymentMethod.value === 'balance' && (detail.includes('余额不足') || firstFieldError.includes('余额不足'))) {
       ElMessage.error('余额不足，请先充值后再支付')
-    } else if (selectedPaymentMethod.value === 'balance' && balancePaid) {
+    } else if (!isSubscription && selectedPaymentMethod.value === 'balance' && balancePaid) {
       try {
         if (balanceTxnId) {
           await refundBalancePayment(balanceTxnId, '预约创建失败自动补偿')
@@ -367,6 +425,10 @@ async function submitReservation() {
         console.error('自动退款失败', refundErr)
         ElMessage.error('预约失败，自动退款失败，请联系客服处理。')
       }
+    } else if (firstFieldError) {
+      ElMessage.error(firstFieldError)
+    } else if (detail) {
+      ElMessage.error(detail)
     } else {
       ElMessage.error('系统繁忙，预约失败，请稍后重试。')
     }

@@ -292,7 +292,28 @@
                   {{ selectedSpot.current_plate || selectedSpot.reserved_plate || '无' }}
                 </p>
               </div>
-              
+
+              <!-- 停车时长 (已占用车位) -->
+              <div v-if="spotDuration" class="bg-slate-50 rounded-lg p-4 space-y-2">
+                <div class="flex justify-between items-center">
+                  <p class="text-xs text-gray-600 font-semibold uppercase">已停时长</p>
+                  <p class="text-sm font-bold text-slate-900">{{ spotDuration.duration_text }}</p>
+                </div>
+                <div class="flex justify-between items-center">
+                  <p class="text-xs text-gray-600 font-semibold uppercase">当前费用</p>
+                  <p class="text-sm font-bold text-red-600">
+                    <span v-if="spotDuration.subscription_free">订阅免费</span>
+                    <span v-else>¥ {{ Number(spotDuration.amount || 0).toFixed(2) }}</span>
+                  </p>
+                </div>
+                <div class="flex justify-between items-center">
+                  <p class="text-xs text-gray-600 font-semibold uppercase">支付状态</p>
+                  <p :class="['text-xs font-bold px-2 py-0.5 rounded-full', spotDuration.payment_state === 'paid' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700']">
+                    {{ spotDuration.payment_state === 'paid' ? '已支付' : '待缴费' }}
+                  </p>
+                </div>
+              </div>
+
               <!-- 预约按钮 -->
               <button 
                 v-if="selectedSpot.status === 'free'"
@@ -325,6 +346,7 @@ import { ElMessage } from 'element-plus'
 import ParkingMapSVGv3 from '@/components/ParkingMapSVGv3.vue'
 import { getSpacesByFloor, findCarByPlate } from '@/api/parking'
 import { calculateNavigationPath, getNavigationStartPoints } from '@/api/map'
+import { quickPayQuoteNoLogin } from '@/api/payment'
 import { usePlateStore } from '@/stores/plate'
 
 const router = useRouter()
@@ -344,6 +366,7 @@ const allSpots = ref([])
 const selectedSpot = ref(null)
 const isLoading = ref(false)
 const searchedSpotId = ref(null)  // 记录搜索到的车位ID
+const spotDuration = ref(null)  // 选中车位的停车时长信息
 
 const navigationPath = ref([]) // 路径点坐标列表
 const navigationInfo = ref(null) // 导航距离时间信息
@@ -732,8 +755,28 @@ async function triggerNavigation(targetSpotId) {
 /**
  * 点击车位处理
  */
-function handleSpotClick(spot) {
+async function handleSpotClick(spot) {
   selectedSpot.value = spot
+  spotDuration.value = null
+
+  // 占用车位：查询停车时长
+  if (spot.status === 'occupied' && spot.current_plate) {
+    try {
+      const session = await quickPayQuoteNoLogin(spot.current_plate)
+      if (session?.found) {
+        spotDuration.value = {
+          entry_time: session.entry_time,
+          duration_text: session.duration_text,
+          amount: session.amount,
+          payment_state: session.payment_state,
+          subscription_free: session.subscription_free,
+        }
+      }
+    } catch (err) {
+      spotDuration.value = null
+    }
+  }
+
   if (selectedStartId.value) {
     triggerNavigation(spot.id)
   }
