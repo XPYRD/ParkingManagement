@@ -15,6 +15,7 @@ accounts — API 视图
 - PATCH  /api/v1/accounts/admin/users/{id}/   [管理端] 修改用户状态
 """
 
+from django.db.models import Exists, OuterRef
 from rest_framework import viewsets, generics, permissions, status
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -28,6 +29,7 @@ from .serializers import (
     UserRegisterSerializer,
     UserProfileSerializer,
     UserAdminSerializer,
+    ChangePasswordSerializer,
     VehicleSerializer,
 )
 
@@ -55,6 +57,23 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
     def get_object(self) -> User:
         """始终返回当前登录用户，无需传 ID"""
         return self.request.user
+
+
+class ChangePasswordView(generics.GenericAPIView):
+    """
+    修改密码 — 对应个人中心修改密码功能
+
+    POST /api/v1/accounts/change-password/
+    需要登录认证
+    """
+    serializer_class = ChangePasswordSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({'detail': '密码修改成功'})
 
 
 class VehicleViewSet(viewsets.ModelViewSet):
@@ -96,6 +115,15 @@ class UserAdminViewSet(viewsets.ModelViewSet):
     filterset_fields = ['status', 'is_vip', 'is_active']
     search_fields = ['username', 'phone', 'email']
     ordering_fields = ['date_joined', 'last_login']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        has_sub = self.request.query_params.get('has_subscription')
+        if has_sub == 'true':
+            qs = qs.filter(subscriptions__is_active=True).distinct()
+        elif has_sub == 'false':
+            qs = qs.exclude(subscriptions__is_active=True).distinct()
+        return qs
 
     @action(detail=True, methods=['post'], url_path='toggle-ban')
     def toggle_ban(self, request, pk=None):

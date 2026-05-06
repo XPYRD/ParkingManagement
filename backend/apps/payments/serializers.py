@@ -8,7 +8,7 @@ payments — 序列化器
 """
 
 from rest_framework import serializers
-from .models import Payment, Subscription, SubscriptionPlan, PricingRule, UserBalance, TopUpRecord
+from .models import BankCard, Payment, Subscription, SubscriptionPlan, PricingRule, UserBalance, TopUpRecord
 
 
 class PaymentSerializer(serializers.ModelSerializer):
@@ -163,6 +163,19 @@ class UserBalanceSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'user', 'total_recharged', 'total_consumed', 'created_at', 'updated_at']
+
+
+class BankCardSerializer(serializers.ModelSerializer):
+    """银行卡 — 用户支付方式绑定。"""
+
+    class Meta:
+        model = BankCard
+        fields = [
+            'id', 'user', 'bank_name', 'card_type',
+            'holder_name', 'card_last4', 'bin_prefix',
+            'is_default', 'is_active', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at']
 
 
 class TopUpRecordSerializer(serializers.ModelSerializer):

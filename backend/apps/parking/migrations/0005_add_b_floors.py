@@ -54,9 +54,9 @@ def create_b_floor_spaces(apps, schema_editor):
     b2_count = ParkingSpace.objects.filter(space_id__startswith='space_B2').count()
     total = ParkingSpace.objects.count()
     
-    print(f"✅ B1: {b1_count} spaces")
-    print(f"✅ B2: {b2_count} spaces")
-    print(f"✅ 总计: {total} spaces\n")
+    print(f"[OK] B1: {b1_count} spaces")
+    print(f"[OK] B2: {b2_count} spaces")
+    print(f"[OK] Total: {total} spaces\n")
 
 
 def reverse_b_floor_spaces(apps, schema_editor):

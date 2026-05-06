@@ -61,15 +61,19 @@
       <!-- 工具栏 -->
       <div class="p-4 border-b border-outline-variant/20 flex flex-wrap gap-4 items-center justify-between bg-surface-container-low/50">
          <div class="flex gap-4 items-center">
-            <el-input v-model="filters.search" placeholder="搜索车位编号..." size="small" class="w-64" clearable @change="handleSearch">
+            <el-input v-model="filters.search" placeholder="搜索车位编号或车牌..." size="small" class="w-[440px]" clearable @change="handleSearch">
                <template #prefix><span class="material-symbols-outlined text-sm">search</span></template>
             </el-input>
-            <el-select v-model="filters.floor" placeholder="楼层" size="small" class="w-32" clearable @change="handleSearch">
+            <el-select v-model="filters.floor" placeholder="楼层" size="small" class="w-48" clearable @change="handleSearch">
                <el-option label="B2层" value="B2" />
                <el-option label="B1层" value="B1" />
                <el-option label="1层" value="1F" />
             </el-select>
-            <el-select v-model="filters.status" placeholder="状态" size="small" class="w-32" clearable @change="handleSearch">
+            <el-select v-model="filters.type" placeholder="车位类型" size="small" class="w-48" clearable @change="handleSearch">
+               <el-option label="标准车位" value="standard" />
+               <el-option label="充电桩" value="ev" />
+            </el-select>
+            <el-select v-model="filters.status" placeholder="状态" size="small" class="w-48" clearable @change="handleSearch">
                <el-option label="空闲" value="free" />
                <el-option label="占用" value="occupied" />
                <el-option label="预约" value="reserved" />
@@ -113,16 +117,10 @@
                </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="updated_at" label="最后更新">
+          <el-table-column label="操作" width="120" fixed="right">
             <template #default="{ row }">
-               {{ new Date(row.updated_at).toLocaleString() }}
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="150" fixed="right">
-            <template #default="{ row }">
-               <el-button link type="primary" size="small">详情</el-button>
-               <el-button link type="warning" size="small" v-if="row.status !== 'maintenance'">修停</el-button>
-               <el-button link type="success" size="small" v-else>恢复</el-button>
+               <el-button link type="warning" size="small" v-if="row.status !== 'maintenance'" @click="handlePauseSpot(row)">修停</el-button>
+               <el-button link type="success" size="small" v-else @click="handleResumeSpot(row)">恢复</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -149,10 +147,12 @@ import { ref, reactive, onMounted } from 'vue'
 import { getSpots } from '@/api/parking'
 import { getDashboardOverview } from '@/api/dashboard'
 import { ElMessage } from 'element-plus'
+import request from '@/api/request'
 
 const filters = reactive({
   search: '',
   floor: '',
+  type: '',
   status: ''
 })
 
@@ -194,9 +194,10 @@ const loadSpotsList = async () => {
     try {
         const params = {
            page: currentPage.value,
-           ...(filters.search && { search: filters.search }),
-           ...(filters.floor && { floor: filters.floor }),
-           ...(filters.status && { status: filters.status })
+           ...(filters.search && filters.search.trim() && { search: filters.search.trim() }),
+           ...(filters.floor && filters.floor.trim() && { floor: filters.floor.trim() }),
+           ...(filters.type && filters.type.trim() && { type: filters.type.trim() }),
+           ...(filters.status && filters.status.trim() && { status: filters.status.trim() })
         }
         const res = await getSpots(params)
         if (res.results) {
@@ -221,5 +222,35 @@ const handleSearch = () => {
 const handlePageChange = (page) => {
     currentPage.value = page
     loadSpotsList()
+}
+
+const handlePauseSpot = async (row) => {
+    try {
+        // 调用 API 修停车位
+        await updateSpotStatus(row.id, true)
+        row.status = 'maintenance'
+        row.status_label = '维护中'
+        ElMessage.success('车位已修停')
+    } catch (err) {
+        ElMessage.error('修停失败')
+    }
+}
+
+const handleResumeSpot = async (row) => {
+    try {
+        // 调用 API 恢复车位
+        await updateSpotStatus(row.id, false)
+        row.status = 'free'
+        row.status_label = '空闲'
+        ElMessage.success('车位已恢复')
+    } catch (err) {
+        ElMessage.error('恢复失败')
+    }
+}
+
+const updateSpotStatus = async (spotId, isMaintenance) => {
+    // 使用 toggle-maintenance 接口切换维修状态
+    const res = await request.post(`/parking/spots/${spotId}/toggle-maintenance/`, { maintenance: isMaintenance })
+    return res
 }
 </script>

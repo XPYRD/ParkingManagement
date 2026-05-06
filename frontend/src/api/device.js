@@ -21,9 +21,19 @@ export function getDeviceOverview() {
   return request.get('/devices/list/overview/')
 }
 
+/** 更新设备 */
+export function updateDevice(id, data) {
+  return request.put(`/devices/list/${id}/`, data)
+}
+
 /** 报告设备故障 */
 export function reportFault(id, faultDetail) {
   return request.post(`/devices/list/${id}/report-fault/`, {
     fault_detail: faultDetail,
   })
+}
+
+/** 重启设备 */
+export function restartDevice(id, type = 'soft') {
+  return request.post(`/devices/list/${id}/restart/`, { type })
 }

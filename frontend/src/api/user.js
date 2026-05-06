@@ -25,6 +25,11 @@ export function updateProfile(data) {
   return request.put('/accounts/profile/', data)
 }
 
+/** 修改密码 */
+export function changePassword(data) {
+  return request.post('/accounts/change-password/', data)
+}
+
 // ============================================================
 // 车辆管理
 // ============================================================

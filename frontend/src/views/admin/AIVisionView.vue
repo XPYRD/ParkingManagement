@@ -130,8 +130,7 @@
               </div>
               <div class="space-y-1">
                 <div class="flex items-center justify-between">
-                  <span class="text-[10px] font-bold text-primary uppercase">{{ res.vehicle_type || 'UNKNOWN' }}</span>
-                  <span v-if="res.plate_color" class="px-1 py-0.5 rounded-[4px] bg-blue-600 text-[8px] text-white font-bold">{{ res.plate_color }}</span>
+                  <span v-if="res.energy_type" class="px-1 py-0.5 rounded-[4px] text-[8px] text-white font-bold" :class="res.energy_type === 'ICE' ? 'bg-blue-600' : 'bg-green-600'">{{ res.energy_type === 'ICE' ? '油车' : '电车' }}</span>
                 </div>
                 <p class="text-sm font-black text-on-surface">{{ res.plate_number || '未识别' }}</p>
               </div>
@@ -145,30 +144,23 @@
         </div>
 
         <!-- 识别结果统计 -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div class="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/10">
-            <p class="text-xs text-secondary font-bold uppercase mb-1">识别车型</p>
-            <p class="text-2xl font-black text-primary capitalize">{{ analysisResult?.vehicle_type || '--' }}</p>
-          </div>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
           <div class="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/10">
             <p class="text-xs text-secondary font-bold uppercase mb-1">识别车牌</p>
             <p class="text-2xl font-black text-on-surface">{{ analysisResult?.plate_number || '--' }}</p>
           </div>
           <div class="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/10">
-            <p class="text-xs text-secondary font-bold uppercase mb-1">牌照类型</p>
+            <p class="text-xs text-secondary font-bold uppercase mb-1">车辆类型</p>
             <div class="flex items-center gap-2 mt-1">
               <span 
-                v-if="analysisResult?.plate_color"
+                v-if="analysisResult?.energy_type"
                 :class="[
                   'px-2 py-0.5 rounded text-[10px] font-bold text-white uppercase tracking-wider',
-                  analysisResult.plate_color === 'Blue' ? 'bg-blue-600' : (analysisResult.plate_color === 'Green' ? 'bg-green-500' : 'bg-gray-500')
+                  analysisResult.energy_type === 'ICE' ? 'bg-blue-600' : (analysisResult.energy_type === 'new_energy' ? 'bg-green-500' : 'bg-gray-500')
                 ]"
               >
-                {{ analysisResult.plate_color }}
+                {{ analysisResult.energy_type === 'ICE' ? '油车' : (analysisResult.energy_type === 'new_energy' ? '电车' : analysisResult.energy_type) }}
               </span>
-              <p class="text-lg font-bold text-on-surface-variant line-clamp-1">
-                {{ analysisResult?.energy_type || '--' }}
-              </p>
             </div>
           </div>
           <div class="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/10">
@@ -194,12 +186,19 @@
                 <span class="material-symbols-outlined text-5xl mb-2">dataset_linked</span>
                 <p>等待联动指令触发...</p>
             </div>
-            <div v-for="(log, i) in logs" :key="i" class="p-3 rounded-xl bg-surface-container flex gap-3 border-l-4 border-primary">
-               <span class="text-[10px] text-outline mt-1">{{ log.time }}</span>
-               <div class="flex-1">
-                 <p class="text-on-surface font-semibold">{{ log.action }}</p>
-                 <p class="text-xs text-secondary mt-1">{{ log.detail }}</p>
+            <div v-for="(log, i) in logs" :key="i"
+                 class="p-3 rounded-xl bg-surface-container flex gap-3 border-l-4 cursor-pointer transition-all hover:bg-surface-container-high"
+                 :class="log.expanded ? 'border-l-4 border-l-primary' : 'border-l-4 border-l-primary/40'"
+                 @click="toggleLogDetail(i)">
+               <span class="text-[10px] text-outline mt-1 flex-shrink-0">{{ log.time }}</span>
+               <div class="flex-1 min-w-0">
+                 <p class="text-on-surface font-semibold text-sm">{{ log.action }}</p>
+                 <p class="text-xs text-secondary mt-1 truncate">{{ log.detail }}</p>
+                 <div v-if="log.expanded && log.raw" class="mt-2 pt-2 border-t border-outline-variant/20">
+                   <pre class="text-[10px] text-outline whitespace-pre-wrap break-all leading-relaxed max-h-32 overflow-y-auto">{{ typeof log.raw === 'object' ? JSON.stringify(log.raw, null, 2) : log.raw }}</pre>
+                 </div>
                </div>
+               <span class="material-symbols-outlined text-[14px] text-outline flex-shrink-0 self-start mt-0.5">{{ log.expanded ? 'expand_less' : 'expand_more' }}</span>
             </div>
           </div>
 
@@ -288,20 +287,25 @@ const startRecognition = async () => {
   try {
     const res = await request.post('/ai/recognize/', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: 30000  // 单帧超快模式，约 3-5s
+      timeout: 120000  // 含首次模型加载，约 3-5s 识别 + 模型下载
     })
     
-    analysisResult.value = res
-    inferenceTime.value = Date.now() - startTime
-    
-    logs.value.unshift({
-      time: new Date().toLocaleTimeString(),
-      action: scene.value === 'entry' ? '入场自动核销' : (scene.value === 'exit' ? '离场账单结算' : '车位状态映射'),
-      detail: res.action_taken || '识别成功，系统已自动响应'
-    })
+    if (res.success) {
+      analysisResult.value = res
+      inferenceTime.value = Date.now() - startTime
 
-    drawResults()
-    ElMessage.success('视觉感知分析完成')
+      logs.value.unshift({
+        time: new Date().toLocaleTimeString(),
+        action: scene.value === 'entry' ? '入场自动核销' : (scene.value === 'exit' ? '离场账单结算' : '车位状态映射'),
+        detail: res.action_taken || '识别成功，系统已自动响应'
+      })
+
+      drawResults()
+      ElMessage.success('视觉感知分析完成')
+    } else {
+      inferenceTime.value = Date.now() - startTime
+      ElMessage.warning(res.detail || '未识别到车牌')
+    }
   } catch (err) {
     console.error(err)
     ElMessage.error('AI 推理失败')
@@ -398,6 +402,12 @@ const drawResults = () => {
     ctx.fillStyle = '#111827'
     ctx.fillText(text, x1 + 5, y1 - 8)
   })
+}
+
+function toggleLogDetail(index) {
+  if (logs.value[index]) {
+    logs.value[index].expanded = !logs.value[index].expanded
+  }
 }
 
 onMounted(() => {

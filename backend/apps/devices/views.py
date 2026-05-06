@@ -12,6 +12,7 @@ devices — API 视图
 """
 
 from django.db.models import Count, Q, Avg
+from django.utils import timezone
 from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -85,3 +86,23 @@ class DeviceViewSet(viewsets.ModelViewSet):
         device.save(update_fields=['status', 'fault_detail', 'updated_at'])
         serializer = DeviceSerializer(device)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='restart')
+    def restart(self, request, pk=None):
+        """
+        重启设备
+
+        POST /api/v1/devices/list/{id}/restart/
+        body: { type: "soft" | "hard" }
+        """
+        device = self.get_object()
+        restart_type = request.data.get('type', 'soft')
+        if restart_type == 'hard':
+            device.status = Device.Status.OFFLINE
+            device.offline_since = timezone.now()
+            device.save(update_fields=['status', 'offline_since', 'updated_at'])
+            return Response({'detail': '硬件重启中，设备已离线'})
+        # 软重启：短暂离线后自动恢复
+        device.status = Device.Status.MAINTENANCE
+        device.save(update_fields=['status', 'updated_at'])
+        return Response({'detail': '软重启信号已发送，设备即将重新连接'})

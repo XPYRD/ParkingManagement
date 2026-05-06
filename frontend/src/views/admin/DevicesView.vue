@@ -85,29 +85,29 @@
            <div class="grid grid-cols-2 gap-4 text-xs text-secondary mt-6" v-if="dev.status === 'online' || dev.status === 'maintenance'">
               <div>
                  <p class="mb-1">设备序列号</p>
-                 <p class="font-medium text-on-surface truncate" :title="dev.ip_address || dev.id">{{ dev.ip_address || dev.id }}</p>
+                 <p class="font-medium text-on-surface truncate" :title="dev.serial_number || dev.id">{{ dev.serial_number || dev.id }}</p>
               </div>
               <div>
-                 <p class="mb-1">近期状态</p>
-                 <p class="font-medium text-on-surface">连通正常</p>
+                 <p class="mb-1">正常运行率</p>
+                 <p class="font-medium text-on-surface">{{ dev.uptime || '--' }}%</p>
               </div>
               <div>
-                 <p class="mb-1">最后心跳</p>
-                 <p class="font-medium text-on-surface">{{ dev.last_ping ? new Date(dev.last_ping).toLocaleTimeString() : '刚刚' }}</p>
+                 <p class="mb-1">离线起始</p>
+                 <p class="font-medium text-on-surface">{{ dev.offline_since ? new Date(dev.offline_since).toLocaleString() : '当前在线' }}</p>
               </div>
               <div>
-                 <p class="mb-1">最后更新时间</p>
-                 <p class="font-medium text-on-surface">{{ new Date(dev.updated_at).toLocaleDateString() }}</p>
+                 <p class="mb-1">最后更新</p>
+                 <p class="font-medium text-on-surface">{{ dev.updated_at ? new Date(dev.updated_at).toLocaleString() : '--' }}</p>
               </div>
            </div>
 
-           <!-- 故障信息 (仅故障状态显示) -->
-           <div class="mt-4 p-3 bg-error/5 text-error rounded-xl text-sm" v-else>
+           <!-- 故障信息 (仅故障/离线状态显示) -->
+           <div class="mt-4 p-3 bg-error/5 text-error rounded-xl text-sm" v-if="dev.status==='offline' || dev.status==='error'">
               <div class="flex items-start gap-2">
                  <span class="material-symbols-outlined text-sm mt-0.5 relative top-px flex-shrink-0">report</span>
                  <div>
-                    <p class="font-bold mb-0.5">问题：{{ dev.errorMsg || '设备连通性丢失或报告硬件故障' }}</p>
-                    <p class="text-xs opacity-80">最近一次在线时间：{{ dev.last_ping ? new Date(dev.last_ping).toLocaleString() : '未知' }}</p>
+                    <p class="font-bold mb-0.5">问题：{{ dev.fault_detail || '设备连通性丢失或报告硬件故障' }}</p>
+                    <p class="text-xs opacity-80">最近一次在线时间：{{ dev.offline_since ? new Date(dev.offline_since).toLocaleString() : '未知' }}</p>
                  </div>
               </div>
            </div>
@@ -115,14 +115,17 @@
 
         <!-- 底部操作条 -->
         <div class="border-t border-outline-variant/10 p-3 bg-surface-container-low/50 flex divide-x divide-outline-variant/20">
-           <button class="flex-1 text-xs font-bold text-secondary hover:text-primary transition-colors flex items-center justify-center gap-1">
-              <span class="material-symbols-outlined text-sm">settings</span> 配置
-           </button>
-           <button v-if="dev.status==='offline'" class="flex-1 text-xs font-bold text-error hover:opacity-80 transition-opacity flex items-center justify-center gap-1">
+        <button class="flex-1 text-xs font-bold text-secondary hover:text-primary transition-colors flex items-center justify-center gap-1" @click="showDeviceConfig(dev)">
+           <span class="material-symbols-outlined text-sm">settings</span> 配置
+        </button>
+           <button v-if="dev.status==='offline'" class="flex-1 text-xs font-bold text-error hover:opacity-80 transition-opacity flex items-center justify-center gap-1" @click="restartDevice(dev, 'hard')">
               <span class="material-symbols-outlined text-sm">restart_alt</span> 硬件重启
            </button>
-           <button v-else class="flex-1 text-xs font-bold text-secondary hover:text-primary transition-colors flex items-center justify-center gap-1">
-              <span class="material-symbols-outlined text-sm">restart_alt</span> 软重启
+           <button v-else-if="dev.status==='maintenance'" class="flex-1 text-xs font-bold text-green-600 hover:text-green-700 transition-colors flex items-center justify-center gap-1" @click="restoreDevice(dev)">
+              <span class="material-symbols-outlined text-sm">restart_alt</span> 恢复
+           </button>
+           <button v-else class="flex-1 text-xs font-bold text-secondary hover:text-primary transition-colors flex items-center justify-center gap-1" @click="setMaintenance(dev)">
+              <span class="material-symbols-outlined text-sm">build</span> 维护
            </button>
         </div>
       </div>
@@ -131,6 +134,40 @@
          未找到匹配的设备
       </div>
     </div>
+
+    <!-- 设备配置弹窗 -->
+    <el-dialog v-model="configDialogVisible" title="设备配置" width="500px" destroy-on-close>
+      <el-form :model="configForm" ref="configFormRef" label-position="top">
+        <el-form-item label="设备名称" prop="name">
+          <el-input v-model="configForm.name" placeholder="设备名称" />
+        </el-form-item>
+        <el-form-item label="设备类型" prop="device_type">
+          <el-select v-model="configForm.device_type" class="w-full">
+            <el-option label="道闸设备" value="gate" />
+            <el-option label="监控摄像头" value="camera" />
+            <el-option label="自助终端" value="kiosk" />
+            <el-option label="地磁/传感器" value="sensor" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="设备序列号" prop="serial_number">
+          <el-input v-model="configForm.serial_number" placeholder="设备序列号" />
+        </el-form-item>
+        <el-form-item label="安装位置" prop="location">
+          <el-input v-model="configForm.location" placeholder="设备安装位置" />
+        </el-form-item>
+        <el-form-item label="状态" prop="status">
+          <el-select v-model="configForm.status" class="w-full">
+            <el-option label="在线" value="online" />
+            <el-option label="离线" value="offline" />
+            <el-option label="维护中" value="maintenance" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="configDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingConfig" @click="submitDeviceConfig">保存配置</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -139,7 +176,7 @@
  * 设备网络管理 — 接入真实 API 数据
  */
 import { ref, reactive, onMounted } from 'vue'
-import { getDevices, getDeviceOverview } from '@/api/device'
+import { getDevices, getDeviceOverview, updateDevice, restartDevice as restartDeviceApi } from '@/api/device'
 import { ElMessage } from 'element-plus'
 
 const loadingOverview = ref(false)
@@ -153,6 +190,80 @@ const filters = reactive({
    type: '',
    status: ''
 })
+
+// 设备配置弹窗
+const configDialogVisible = ref(false)
+const savingConfig = ref(false)
+const configFormRef = ref(null)
+const configForm = reactive({
+  id: null,
+  name: '',
+  device_type: '',
+  serial_number: '',
+  location: '',
+  status: '',
+})
+
+function showDeviceConfig(dev) {
+  configForm.id = dev.id
+  configForm.name = dev.name || ''
+  configForm.device_type = dev.device_type || ''
+  configForm.serial_number = dev.serial_number || ''
+  configForm.location = dev.location || ''
+  configForm.status = dev.status || 'online'
+  configDialogVisible.value = true
+}
+
+async function submitDeviceConfig() {
+  if (!configForm.id) return
+  savingConfig.value = true
+  try {
+    await updateDevice(configForm.id, {
+      name: configForm.name,
+      device_type: configForm.device_type,
+      serial_number: configForm.serial_number,
+      location: configForm.location,
+      status: configForm.status,
+    })
+    ElMessage.success('设备配置已保存')
+    configDialogVisible.value = false
+    await loadDevicesList()
+  } catch (err) {
+    ElMessage.error('保存失败')
+  } finally {
+    savingConfig.value = false
+  }
+}
+
+async function restartDevice(dev, type) {
+  try {
+    await restartDeviceApi(dev.id, type)
+    ElMessage.success('硬件重启中，设备已离线')
+    await loadDevicesList()
+  } catch (err) {
+    ElMessage.error('重启操作失败')
+  }
+}
+
+async function setMaintenance(dev) {
+  try {
+    await updateDevice(dev.id, { status: 'maintenance' })
+    ElMessage.success('设备已设为维护状态')
+    await loadDevicesList()
+  } catch (err) {
+    ElMessage.error('操作失败')
+  }
+}
+
+async function restoreDevice(dev) {
+  try {
+    await updateDevice(dev.id, { status: 'online' })
+    ElMessage.success('设备已恢复在线')
+    await loadDevicesList()
+  } catch (err) {
+    ElMessage.error('恢复失败')
+  }
+}
 
 onMounted(() => {
    loadOverview()

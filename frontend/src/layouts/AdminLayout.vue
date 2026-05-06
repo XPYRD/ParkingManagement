@@ -28,19 +28,7 @@
       </nav>
 
       <!-- 底部操作区 -->
-      <div class="mt-auto border-t border-slate-200 pt-4 space-y-1">
-        <button
-          class="w-full bg-primary text-white py-3 rounded-xl font-bold text-sm mb-4 active:scale-95 duration-150"
-        >
-          生成报表
-        </button>
-        <a
-          href="#"
-          class="flex items-center gap-3 px-4 py-2 text-slate-500 hover:bg-slate-200 rounded-xl"
-        >
-          <span class="material-symbols-outlined">help</span>
-          <span class="font-medium text-sm">帮助中心</span>
-        </a>
+      <div class="mt-auto border-t border-slate-200 pt-4">
         <button
           class="flex items-center gap-3 px-4 py-2 text-slate-500 hover:bg-slate-200 rounded-xl w-full"
           @click="handleLogout"

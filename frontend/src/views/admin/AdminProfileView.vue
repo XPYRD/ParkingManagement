@@ -122,34 +122,33 @@
               </el-input>
             </el-form-item>
 
-            <el-divider class="!my-8" />
-
-            <h3 class="text-sm font-bold text-slate-800 uppercase tracking-widest mb-6">安全选项</h3>
-            
-            <div class="space-y-6">
-              <div class="flex items-center justify-between group">
-                <div>
-                  <p class="text-sm font-bold text-slate-700">紧急停场通知</p>
-                  <p class="text-xs text-slate-500 mt-0.5">当发生火灾或安全闯入时立即推送</p>
-                </div>
-                <el-switch v-model="notifications.emergency" />
-              </div>
-              
-              <div class="flex items-center justify-between group">
-                <div>
-                  <p class="text-sm font-bold text-slate-700">日度营收报告</p>
-                  <p class="text-xs text-slate-500 mt-0.5">每天凌晨 2:00 发送至您的邮箱</p>
-                </div>
-                <el-switch v-model="notifications.dailyReport" />
-              </div>
-            </div>
-
             <div class="pt-8">
               <el-button type="primary" size="large" class="!w-full !py-6 !text-sm !font-bold !rounded-xl !shadow-lg !shadow-primary/20" :loading="saving" @click="handleSave">
                 保存管理员设置
               </el-button>
             </div>
           </el-form>
+
+          <!-- 修改密码 -->
+          <div class="mt-10 pt-8 border-t border-slate-200">
+            <h3 class="text-sm font-bold text-slate-800 uppercase tracking-widest mb-6">修改密码</h3>
+            <el-form label-position="top" class="space-y-5">
+              <el-form-item label="当前密码">
+                <el-input v-model="passwordForm.old_password" type="password" size="large" show-password placeholder="输入当前密码" />
+              </el-form-item>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <el-form-item label="新密码">
+                  <el-input v-model="passwordForm.new_password" type="password" size="large" show-password placeholder="8-16位新密码" />
+                </el-form-item>
+                <el-form-item label="确认新密码">
+                  <el-input v-model="passwordForm.new_password_confirm" type="password" size="large" show-password placeholder="再次输入新密码" />
+                </el-form-item>
+              </div>
+              <el-button type="primary" plain size="large" class="!w-full !py-6 !text-sm !font-bold !rounded-xl" :loading="changingPassword" @click="submitChangePassword">
+                更新密码
+              </el-button>
+            </el-form>
+          </div>
         </div>
       </div>
     </div>
@@ -158,10 +157,15 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { getProfile, updateProfile } from '@/api/user'
+import { useRouter } from 'vue-router'
+import { getProfile, updateProfile, changePassword } from '@/api/user'
 import request from '@/api/request' // 用于调用 2FA 接口
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useAuthStore } from '@/stores/auth'
 import QrcodeVue from 'qrcode.vue'
+
+const router = useRouter()
+const authStore = useAuthStore()
 
 const profile = ref({
   username: '',
@@ -170,12 +174,45 @@ const profile = ref({
   last_login: ''
 })
 
-const notifications = reactive({
-  emergency: true,
-  dailyReport: true
+const saving = ref(false)
+const changingPassword = ref(false)
+const passwordForm = reactive({
+  old_password: '',
+  new_password: '',
+  new_password_confirm: '',
 })
 
-const saving = ref(false)
+async function submitChangePassword() {
+  if (!passwordForm.old_password || !passwordForm.new_password) {
+    return ElMessage.warning('请填写完整密码信息')
+  }
+  if (passwordForm.new_password !== passwordForm.new_password_confirm) {
+    return ElMessage.warning('两次输入的新密码不一致')
+  }
+  if (passwordForm.new_password.length < 8 || passwordForm.new_password.length > 16) {
+    return ElMessage.warning('密码长度需在 8-16 位之间')
+  }
+  changingPassword.value = true
+  try {
+    await changePassword({
+      old_password: passwordForm.old_password,
+      new_password: passwordForm.new_password,
+      new_password_confirm: passwordForm.new_password_confirm,
+    })
+    ElMessage.success('密码修改成功，请重新登录')
+    passwordForm.old_password = ''
+    passwordForm.new_password = ''
+    passwordForm.new_password_confirm = ''
+    setTimeout(() => {
+      authStore.logout()
+      router.push('/login')
+    }, 1500)
+  } catch (err) {
+    ElMessage.error('密码修改失败，请检查当前密码是否正确')
+  } finally {
+    changingPassword.value = false
+  }
+}
 
 onMounted(async () => {
   try {

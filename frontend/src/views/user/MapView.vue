@@ -166,7 +166,7 @@
             <!-- Canvas 地图（SVG背景 + 停车位标记 + 内部缩放/平移） -->
             <div class="aspect-[1098/771] w-full">
               <ParkingMapSVGv3 
-                :spots="allSpots"
+                :spots="filteredSpots"
                 :selectedId="selectedSpot?.id"
                 :navigationPath="navigationPath"
                 @select="handleSpotClick"

@@ -81,7 +81,7 @@
               :d="navigationPathD"
               fill="none"
               stroke="#0f172a"
-              stroke-width="12"
+              stroke-width="5"
               stroke-linecap="round"
               stroke-linejoin="round"
               opacity="0.12"
@@ -91,7 +91,7 @@
               :d="navigationPathD"
               fill="none"
               stroke="url(#navigation-gradient)"
-              stroke-width="6"
+              stroke-width="3"
               stroke-linecap="round"
               stroke-linejoin="round"
               stroke-dasharray="14 10"
@@ -100,8 +100,8 @@
               marker-end="url(#navigation-arrow)"
             />
             <circle
-              :cx="navigationPathPoints[0].x"
-              :cy="navigationPathPoints[0].y"
+              :cx="navigationAnchors.start ? navigationAnchors.start.x : navigationPathPoints[0].x"
+              :cy="navigationAnchors.start ? navigationAnchors.start.y : navigationPathPoints[0].y"
               r="7"
               fill="#2563eb"
               stroke="#fff"
@@ -109,8 +109,8 @@
               class="navigation-start"
             />
             <circle
-              :cx="navigationPathPoints[navigationPathPoints.length - 1].x"
-              :cy="navigationPathPoints[navigationPathPoints.length - 1].y"
+              :cx="navigationAnchors.end ? navigationAnchors.end.x : navigationPathPoints[navigationPathPoints.length - 1].x"
+              :cy="navigationAnchors.end ? navigationAnchors.end.y : navigationPathPoints[navigationPathPoints.length - 1].y"
               r="7"
               fill="#ef4444"
               stroke="#fff"
@@ -223,16 +223,73 @@ const navigationPathPoints = computed(() => {
     .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
 })
 
-const navigationPathD = computed(() => {
-  if (navigationPathPoints.value.length === 0) {
-    return ''
+// 计算从车位边缘开始/结束的渲染路径，避免穿过车位中心。
+function _normalize(vx, vy) {
+  const len = Math.hypot(vx, vy) || 1
+  return { x: vx / len, y: vy / len }
+}
+
+function computeNavigationPathData(pts) {
+  if (!pts || pts.length < 2) return { d: '', start: null, end: null }
+
+  const out = []
+  const offsetDist = Math.max(SPOT_WIDTH, SPOT_HEIGHT) / 2 * 0.9
+
+  let startAnchor = null
+  let endAnchor = null
+
+  for (let i = 1; i < pts.length; i++) {
+    const prev = pts[i - 1]
+    const curr = pts[i]
+    const dx = curr.x - prev.x
+    const dy = curr.y - prev.y
+    const n = _normalize(dx, dy)
+
+    // 从 prev 向外偏移，curr 向内偏移，保证不从车位中心直接穿过
+    const segStart = { x: prev.x + n.x * offsetDist, y: prev.y + n.y * offsetDist }
+    const segEnd = { x: curr.x - n.x * offsetDist, y: curr.y - n.y * offsetDist }
+
+    if (i === 1) {
+      startAnchor = segStart
+      out.push(segStart)
+    }
+
+    // 使用 Manhattan 风格分段：横向/纵向折返，减少斜穿
+    const midX = segStart.x + (segEnd.x - segStart.x) / 2
+    out.push({ x: midX, y: segStart.y })
+    out.push({ x: midX, y: segEnd.y })
+    out.push(segEnd)
+
+    if (i === pts.length - 1) {
+      endAnchor = segEnd
+    }
   }
 
-  const [firstPoint, ...restPoints] = navigationPathPoints.value
-  return restPoints.reduce(
-    (path, point) => `${path} L ${point.x} ${point.y}`,
-    `M ${firstPoint.x} ${firstPoint.y}`
-  )
+  if (!startAnchor) startAnchor = pts[0]
+  if (!endAnchor) endAnchor = pts[pts.length - 1]
+
+  // 从 points 数组生成 SVG 路径 d
+  let d = ''
+  if (out.length > 0) {
+    d = `M ${out[0].x} ${out[0].y}`
+    for (let i = 1; i < out.length; i++) {
+      d += ` L ${out[i].x} ${out[i].y}`
+    }
+  }
+
+  return { d, start: startAnchor, end: endAnchor }
+}
+
+const navigationPathD = computed(() => {
+  const pts = navigationPathPoints.value
+  if (pts.length < 2) return ''
+  return computeNavigationPathData(pts).d
+})
+
+const navigationAnchors = computed(() => {
+  const pts = navigationPathPoints.value
+  if (pts.length < 2) return { start: null, end: null }
+  return computeNavigationPathData(pts)
 })
 
 onMounted(() => {

@@ -39,7 +39,7 @@ export function createSubscription(data) {
   return request.post('/payments/subscriptions/', data)
 }
 
-/** 更新订阅（例如停用） */
+/** 更新订阅 */
 export function updateSubscription(id, data) {
   return request.patch(`/payments/subscriptions/${id}/`, data)
 }
@@ -56,6 +56,16 @@ export function getPricingRules() {
 /** [管理端] 更新定价规则 */
 export function updatePricingRule(id, data) {
   return request.put(`/payments/rules/${id}/`, data)
+}
+
+/** [管理端] 创建定价规则 */
+export function createPricingRule(data) {
+  return request.post('/payments/rules/', data)
+}
+
+/** [管理端] 删除定价规则 */
+export function deletePricingRule(id) {
+  return request.delete(`/payments/rules/${id}/`)
 }
 
 // ============================================================
@@ -118,31 +128,6 @@ export function confirmSandboxPayment(transactionId, success = true) {
   })
 }
 
-/** 首页免登录快速缴费 */
-export function quickPayQuoteNoLogin(plateNumber) {
-  return request.post('/payments/records/quick-pay/quote/', {
-    plate_number: plateNumber,
-  })
-}
-
-/** 首页免登录快速缴费 */
-export function quickPayNoLogin(plateNumber, amount, method = 'wechat', sessionId = null) {
-  return request.post('/payments/records/quick-pay/', {
-    plate_number: plateNumber,
-    amount,
-    method,
-    session_id: sessionId,
-  })
-}
-
-/** 首页快速缴费：模拟车辆已出场 */
-export function quickPayMarkExit(plateNumber, sessionId = null) {
-  return request.post('/payments/records/quick-pay/mark-exit/', {
-    plate_number: plateNumber,
-    session_id: sessionId,
-  })
-}
-
 // ============================================================
 // 充值记录
 // ============================================================
@@ -150,4 +135,43 @@ export function quickPayMarkExit(plateNumber, sessionId = null) {
 /** 获取充值记录 */
 export function getTopUpRecords(params) {
   return request.get('/payments/topups/', { params })
+}
+
+// ============================================================
+// 快速缴费（无需登录 — 首页扫码缴费流程）
+// ============================================================
+
+/** 根据车牌号查询当前停车会话（快速缴费·获取报价） */
+export function quickPayQuoteNoLogin(plate) {
+  return request.get('/parking/sessions/by-plate/', { params: { plate } })
+}
+
+/** 快速缴费：创建支付订单或检查订阅免费 */
+export function quickPayNoLogin(plate, amount, method, sessionId) {
+  return request.post(`/parking/sessions/${sessionId}/quick-pay/`, {
+    plate_number: plate,
+    amount,
+    method,
+  })
+}
+
+/** 标记车辆出场（模拟出场） */
+export function quickPayMarkExit(plate, sessionId) {
+  return request.post(`/parking/sessions/${sessionId}/mark-exit/`, {
+    plate_number: plate,
+  })
+}
+
+// ============================================================
+// 银行卡管理
+// ============================================================
+
+/** 获取我的银行卡列表 */
+export function getBankCards(params) {
+  return request.get('/payments/bank-cards/', { params })
+}
+
+/** 添加银行卡 */
+export function addBankCard(data) {
+  return request.post('/payments/bank-cards/', data)
 }

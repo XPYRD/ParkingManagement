@@ -205,95 +205,189 @@
       </div>
     </section>
 
-    <!-- ===== 车辆进出场模拟（独立区块） ===== -->
+    <!-- ===== 车辆进出场模拟控制台 ===== -->
     <section class="px-6 md:px-10 mt-8 max-w-7xl mx-auto">
-      <div class="rounded-3xl border border-slate-200 bg-white p-6 md:p-8 shadow-lg">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-bold text-on-surface tracking-tight font-headline">车辆进出场模拟</h2>
-          <p class="text-xs text-slate-500">使用上方当前车牌进行模拟</p>
+      <div class="sim-console rounded-3xl border border-slate-700/60 p-6 md:p-8 relative overflow-hidden">
+        <!-- 背景纹理: 网点 + 扫描线 -->
+        <div class="sim-bg-dots"></div>
+        <div class="sim-bg-scan"></div>
+
+        <!-- 顶部状态栏 -->
+        <div class="relative z-10 flex flex-wrap items-center gap-x-6 gap-y-2 mb-8">
+          <div class="flex items-center gap-2.5">
+            <span class="sim-status-dot"></span>
+            <h2 class="text-base font-bold text-slate-200 tracking-wider">进出场模拟控制台</h2>
+          </div>
+          <div class="hidden sm:block h-4 w-px bg-slate-600/60"></div>
+          <span class="text-[11px] text-slate-500 font-mono tracking-[0.15em] uppercase">Simulation Console</span>
+          <div class="hidden sm:block flex-1"></div>
+          <span class="text-[10px] text-slate-600 font-mono tracking-wider">SYS {{ new Date().toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit',second:'2-digit'}) }}</span>
         </div>
 
-        <el-tabs v-model="simulationTab" class="simulation-tabs">
-          <el-tab-pane label="车辆进场模拟" name="entry">
-            <div class="pt-2 space-y-3">
-              <el-form label-position="top" class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <el-form-item label="车牌来源" class="md:col-span-2">
-                  <el-radio-group v-model="entryPlateSourceMode" class="!flex gap-2 !w-full">
-                    <el-radio-button label="manual" class="flex-1 text-center">手动输入</el-radio-button>
-                    <el-radio-button label="my_vehicle" class="flex-1 text-center">绑定车辆</el-radio-button>
-                    <el-radio-button label="image" class="flex-1 text-center">上传识别</el-radio-button>
-                  </el-radio-group>
-                </el-form-item>
+        <!-- 模式切换开关 -->
+        <div class="relative z-10 flex bg-slate-800/70 rounded-xl p-1 mb-8 border border-slate-700/40">
+          <button
+            class="flex-1 py-3 px-4 rounded-[10px] text-sm font-bold tracking-wide transition-all duration-300"
+            :class="simulationTab === 'entry' ? 'bg-amber-500/15 text-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.15)]' : 'text-slate-500 hover:text-slate-300'"
+            @click="simulationTab = 'entry'"
+          >
+            <span class="inline-flex items-center gap-2">
+              <span class="text-lg leading-none">↓</span>
+              <span>进场模式</span>
+            </span>
+          </button>
+          <button
+            class="flex-1 py-3 px-4 rounded-[10px] text-sm font-bold tracking-wide transition-all duration-300"
+            :class="simulationTab === 'exit' ? 'bg-cyan-500/15 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.15)]' : 'text-slate-500 hover:text-slate-300'"
+            :disabled="!quickPayQuote || !quickPayQuote.session_id"
+            @click="simulationTab = 'exit'"
+          >
+            <span class="inline-flex items-center gap-2">
+              <span class="text-lg leading-none">↑</span>
+              <span>出场模式</span>
+            </span>
+          </button>
+        </div>
 
-                <el-form-item v-if="entryPlateSourceMode === 'my_vehicle'" label="选择绑定车辆" class="md:col-span-2">
-                  <el-select
-                    v-model="entryVehicleId"
-                    placeholder="请选择已绑定车辆"
-                    class="w-full"
-                    filterable
-                    clearable
-                  >
-                    <el-option
-                      v-for="car in myVehicles"
-                      :key="car.id"
-                      :label="car.plate_number"
-                      :value="car.id"
-                    />
-                  </el-select>
-                </el-form-item>
-
-                <el-form-item v-if="entryPlateSourceMode === 'image'" label="上传车辆图片" class="md:col-span-2">
-                  <div class="w-full flex flex-wrap gap-2 items-center">
-                    <input type="file" accept="image/*" @change="handleEntryImageChange" />
-                    <el-button :loading="entryRecognitionLoading" @click="recognizeEntryPlateFromImage">自动识别车牌</el-button>
-                    <span v-if="entryImageName" class="text-xs text-slate-500">已选: {{ entryImageName }}</span>
-                  </div>
-                </el-form-item>
-
-                <el-form-item label="车牌号" class="md:col-span-1">
-                  <el-input
-                    v-model="entrySimulationPlate"
-                    placeholder="请输入或识别车牌号"
-                    :disabled="entryPlateSourceMode === 'my_vehicle'"
-                    @input="handleEntrySimulationPlateInput"
-                  />
-                </el-form-item>
-
-                <el-form-item label="停车楼层" class="md:col-span-1">
-                  <el-select v-model="entrySimulationFloor" placeholder="请选择楼层" class="w-full">
-                    <el-option label="B2 地下二层" value="B2" />
-                    <el-option label="B1 地下一层" value="B1" />
-                    <el-option label="1F 一楼" value="1F" />
-                  </el-select>
-                </el-form-item>
-              </el-form>
-
-              <el-button
-                size="large"
-                class="!w-full md:!w-auto !h-12 !font-bold"
-                :loading="markEntryLoading"
-                @click="simulateVehicleEntry"
-              >
-                车辆进场(模拟)
-              </el-button>
-              <p class="text-xs text-slate-500">系统会在所选楼层随机分配可用车位，并提示分配位置。</p>
+        <!-- ==================== 进场模式 ==================== -->
+        <div v-show="simulationTab === 'entry'" class="relative z-10 space-y-6">
+          <!-- 数据源选择: 三态按钮组 -->
+          <div>
+            <label class="block text-[11px] text-slate-500 font-mono tracking-[0.12em] uppercase mb-3">数据来源</label>
+            <div class="flex bg-slate-800/50 rounded-lg p-1 border border-slate-700/30">
+              <button
+                v-for="src in [{k:'manual',l:'⌨ 手动'},{k:'my_vehicle',l:'🚗 车辆'},{k:'image',l:'📷 识别'}]"
+                :key="src.k"
+                class="flex-1 py-2 text-xs font-bold rounded-md transition-all duration-200"
+                :class="entryPlateSourceMode === src.k ? 'bg-slate-700 text-slate-100 shadow-sm' : 'text-slate-500 hover:text-slate-300'"
+                @click="entryPlateSourceMode = src.k"
+              >{{ src.l }}</button>
             </div>
-          </el-tab-pane>
-          <el-tab-pane label="车辆出场模拟" name="exit">
-            <div class="pt-2 space-y-2">
-              <el-button
-                size="large"
-                class="!w-full md:!w-auto !h-12 !font-bold"
-                :loading="markExitLoading"
-                :disabled="!quickPayQuote || !quickPayQuote.session_id"
-                @click="simulateVehicleExit"
-              >
-                车辆已出场(模拟)
-              </el-button>
-              <p class="text-xs text-slate-500">需先查询到在场记录后，才可模拟出场。</p>
+          </div>
+
+          <!-- 绑定车辆选择 -->
+          <div v-if="entryPlateSourceMode === 'my_vehicle'" class="animate-[fadeIn_0.2s_ease-out]">
+            <label class="block text-[11px] text-slate-500 font-mono tracking-[0.12em] uppercase mb-2">选择车辆</label>
+            <el-select
+              v-model="entryVehicleId"
+              placeholder="选择已绑定车辆..."
+              class="sim-select w-full"
+              filterable clearable
+              popper-class="sim-select-dropdown"
+            >
+              <el-option v-for="car in myVehicles" :key="car.id" :label="car.plate_number" :value="car.id" />
+            </el-select>
+          </div>
+
+          <!-- 图片上传识别 -->
+          <div v-if="entryPlateSourceMode === 'image'" class="animate-[fadeIn_0.2s_ease-out]">
+            <label class="block text-[11px] text-slate-500 font-mono tracking-[0.12em] uppercase mb-2">图片识别</label>
+            <div class="flex flex-wrap items-center gap-3">
+              <label class="sim-file-btn">
+                <span class="material-symbols-outlined text-sm mr-1">folder_open</span>
+                选择图片
+                <input type="file" accept="image/*" class="hidden" @change="handleEntryImageChange" />
+              </label>
+              <button class="sim-action-btn" :disabled="!entryImageName" :class="{ 'sim-loading': entryRecognitionLoading }" @click="recognizeEntryPlateFromImage">
+                <span class="material-symbols-outlined text-sm mr-1">smart_toy</span>
+                {{ entryRecognitionLoading ? '识别中...' : '识别车牌' }}
+              </button>
+              <span v-if="entryImageName" class="text-[11px] text-slate-400 font-mono truncate max-w-[160px]">{{ entryImageName }}</span>
             </div>
-          </el-tab-pane>
-        </el-tabs>
+          </div>
+
+          <!-- 核心参数区: 车牌号 + 楼层 -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-[11px] text-slate-500 font-mono tracking-[0.12em] uppercase mb-2">车牌号码</label>
+              <div class="sim-plate-display" :class="{ 'sim-plate-locked': entryPlateSourceMode === 'my_vehicle' }">
+                <input
+                  v-model="entrySimulationPlate"
+                  type="text"
+                  :placeholder="entryPlateSourceMode === 'my_vehicle' ? '选择车辆后自动填入' : '输入车牌号...'"
+                  :disabled="entryPlateSourceMode === 'my_vehicle'"
+                  class="sim-plate-input"
+                  @input="handleEntrySimulationPlateInput"
+                />
+              </div>
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-500 font-mono tracking-[0.12em] uppercase mb-2">目标楼层</label>
+              <div class="sim-floor-selector">
+                <button
+                  v-for="f in [{k:'B2',l:'B2'},{k:'B1',l:'B1'},{k:'1F',l:'1F'}]"
+                  :key="f.k"
+                  class="sim-floor-btn"
+                  :class="{ 'sim-floor-active': entrySimulationFloor === f.k }"
+                  @click="entrySimulationFloor = f.k"
+                >{{ f.l }}</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 执行按钮 -->
+          <div class="flex items-end gap-4">
+            <button
+              class="sim-launch-btn"
+              :class="{ 'sim-launch-loading': markEntryLoading }"
+              :disabled="markEntryLoading"
+              @click="simulateVehicleEntry"
+            >
+              <span class="sim-launch-ring"></span>
+              <span class="relative z-10 inline-flex items-center gap-2 text-sm font-extrabold tracking-wider">
+                <span v-if="!markEntryLoading" class="text-lg">▶</span>
+                <span v-else class="sim-spinner"></span>
+                {{ markEntryLoading ? '分配车位中...' : '执行进场' }}
+              </span>
+            </button>
+            <span class="text-[10px] text-slate-600 font-mono tracking-wider pb-1">系统将自动分配可用车位</span>
+          </div>
+        </div>
+
+        <!-- ==================== 出场模式 ==================== -->
+        <div v-show="simulationTab === 'exit'" class="relative z-10 space-y-6">
+          <!-- 在场状态指示 -->
+          <div class="flex items-center gap-4 p-4 rounded-xl bg-slate-800/40 border border-slate-700/30">
+            <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+              :class="quickPayQuote && quickPayQuote.session_id ? 'bg-cyan-500/10' : 'bg-slate-700/50'">
+              <span class="material-symbols-outlined text-xl"
+                :class="quickPayQuote && quickPayQuote.session_id ? 'text-cyan-400' : 'text-slate-500'">
+                {{ quickPayQuote && quickPayQuote.session_id ? 'directions_car' : 'block' }}
+              </span>
+            </div>
+            <div>
+              <p class="text-sm font-bold" :class="quickPayQuote && quickPayQuote.session_id ? 'text-slate-200' : 'text-slate-500'">
+                {{ quickPayQuote && quickPayQuote.session_id ? '车辆在场，可以出场' : '无在场记录' }}
+              </p>
+              <p class="text-[11px] text-slate-500 font-mono tracking-wider mt-0.5">
+                {{ quickPayQuote && quickPayQuote.session_id ? '需先在上方快速缴费通道查询并支付后执行出场' : '请先在快速缴费通道查询停车记录' }}
+              </p>
+            </div>
+            <div class="flex-1 hidden sm:block"></div>
+            <div v-if="quickPayQuote && quickPayQuote.session_id" class="text-right flex-shrink-0">
+              <p class="text-[10px] text-slate-500 font-mono tracking-wider uppercase">已停时长</p>
+              <p class="text-lg font-black text-slate-200 font-mono">{{ quickPayQuote.duration_text }}</p>
+            </div>
+          </div>
+
+          <!-- 出场按钮 -->
+          <div class="flex items-end gap-4">
+            <button
+              class="sim-launch-btn sim-launch-exit"
+              :class="{ 'sim-launch-loading': markExitLoading }"
+              :disabled="!quickPayQuote || !quickPayQuote.session_id || markExitLoading"
+              @click="simulateVehicleExit"
+            >
+              <span class="sim-launch-ring"></span>
+              <span class="relative z-10 inline-flex items-center gap-2 text-sm font-extrabold tracking-wider">
+                <span v-if="!markExitLoading" class="text-lg">▲</span>
+                <span v-else class="sim-spinner"></span>
+                {{ markExitLoading ? '执行出场...' : '执行出场' }}
+              </span>
+            </button>
+            <span v-if="quickPayQuote && quickPayQuote.session_id" class="text-[10px] text-slate-600 font-mono tracking-wider pb-1">释放车位并结算费用</span>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -401,6 +495,7 @@ import PlateNumberInput from '@/components/PlateNumberInput.vue'
 import heroImage from '@/assets/images/hero_bg.png'
 import { hasBoundBankCard } from '@/utils/bankCard'
 import { getDefaultPaymentMethod } from '@/utils/paymentPreference'
+import { useAuthStore } from '@/stores/auth'
 
 import { usePlateStore } from '@/stores/plate'
 /** 实时统计卡片 */
@@ -421,6 +516,7 @@ const quickActions = [
 const floorPreview = ref([])
 let refreshTimer = null
 const plateStore = usePlateStore()
+const authStore = useAuthStore()
 
 const quickPayLoading = ref(false)
 const markEntryLoading = ref(false)
@@ -803,14 +899,16 @@ onMounted(async () => {
   if (plateStore.plateNumber) {
     quickPayForm.value.plate_number = plateStore.plateNumber
   }
-  try {
-    const res = await getVehicles()
-    myVehicles.value = Array.isArray(res?.results) ? res.results : (Array.isArray(res) ? res : [])
-    if (myVehicles.value.length > 0) {
-      entryVehicleId.value = myVehicles.value[0].id
+  if (authStore.isLoggedIn) {
+    try {
+      const res = await getVehicles()
+      myVehicles.value = Array.isArray(res?.results) ? res.results : (Array.isArray(res) ? res : [])
+      if (myVehicles.value.length > 0) {
+        entryVehicleId.value = myVehicles.value[0].id
+      }
+    } catch (err) {
+      myVehicles.value = []
     }
-  } catch (err) {
-    myVehicles.value = []
   }
   await loadHomeStats()
   refreshTimer = window.setInterval(loadHomeStats, 30000)
@@ -910,3 +1008,265 @@ watch(
   },
 )
 </script>
+
+<style scoped>
+/* ============================================================
+   车辆进出场模拟控制台 — Industrial Control-Room Aesthetic
+   ============================================================ */
+.sim-console {
+  background: linear-gradient(160deg, #0f1923 0%, #141e2b 40%, #0d1620 100%);
+}
+
+/* 网点纹理 */
+.sim-bg-dots {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(circle, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+/* 水平扫描线 */
+.sim-bg-scan {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(255, 255, 255, 0.004) 2px,
+    rgba(255, 255, 255, 0.004) 4px
+  );
+}
+
+/* 状态指示灯 */
+.sim-status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 6px #34d399, 0 0 12px rgba(52, 211, 153, 0.4);
+  animation: simPulse 2s ease-in-out infinite;
+}
+
+@keyframes simPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* 车牌显示屏 */
+.sim-plate-display {
+  background: #0a0f14;
+  border: 1px solid rgba(100, 116, 139, 0.35);
+  border-radius: 10px;
+  padding: 4px;
+  transition: border-color 0.3s;
+}
+.sim-plate-display:focus-within {
+  border-color: rgba(251, 191, 36, 0.5);
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.08);
+}
+.sim-plate-locked {
+  opacity: 0.5;
+}
+
+.sim-plate-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 10px 12px;
+  font-family: 'Courier New', 'Source Code Pro', 'Consolas', monospace;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #e2e8f0;
+  caret-color: #fbbf24;
+}
+.sim-plate-input::placeholder {
+  color: #475569;
+  font-weight: 400;
+  font-size: 13px;
+  letter-spacing: 0.03em;
+}
+.sim-plate-input:disabled {
+  color: #64748b;
+  cursor: not-allowed;
+}
+
+/* 楼层选择器 */
+.sim-floor-selector {
+  display: flex;
+  gap: 2px;
+  background: #0a0f14;
+  border: 1px solid rgba(100, 116, 139, 0.35);
+  border-radius: 10px;
+  padding: 4px;
+}
+.sim-floor-btn {
+  flex: 1;
+  padding: 10px 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: #64748b;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.25s;
+}
+.sim-floor-btn:hover {
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.03);
+}
+.sim-floor-active {
+  background: rgba(251, 191, 36, 0.12);
+  color: #fbbf24;
+  box-shadow: inset 0 1px 0 rgba(251, 191, 36, 0.15);
+}
+
+/* 文件上传按钮 */
+.sim-file-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.sim-file-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(148, 163, 184, 0.55);
+  color: #cbd5e1;
+}
+
+/* 通用次级按钮 */
+.sim-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(255, 255, 255, 0.04);
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.sim-action-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07);
+  color: #cbd5e1;
+}
+.sim-action-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* 主执行按钮 — 进场 (amber) */
+.sim-launch-btn {
+  position: relative;
+  padding: 14px 32px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.18) 0%, rgba(245, 158, 11, 0.08) 100%);
+  color: #fbbf24;
+  cursor: pointer;
+  overflow: hidden;
+  transition: all 0.35s;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+.sim-launch-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.28) 0%, rgba(245, 158, 11, 0.14) 100%);
+  box-shadow: 0 0 24px rgba(251, 191, 36, 0.18), 0 4px 16px rgba(0, 0, 0, 0.3);
+  transform: translateY(-1px);
+}
+.sim-launch-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* 出场按钮 (cyan) */
+.sim-launch-exit {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.18) 0%, rgba(8, 145, 178, 0.08) 100%);
+  color: #22d3ee;
+  border-color: rgba(6, 182, 212, 0.3);
+}
+.sim-launch-exit:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.28) 0%, rgba(8, 145, 178, 0.14) 100%);
+  box-shadow: 0 0 24px rgba(6, 182, 212, 0.18), 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+/* 按钮外圈光晕动画 */
+.sim-launch-ring {
+  position: absolute;
+  inset: -2px;
+  border-radius: 14px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s;
+  border: 1px solid rgba(251, 191, 36, 0.25);
+}
+.sim-launch-exit .sim-launch-ring {
+  border-color: rgba(6, 182, 212, 0.25);
+}
+.sim-launch-btn:hover:not(:disabled) .sim-launch-ring {
+  opacity: 1;
+}
+
+/* 加载状态 */
+.sim-launch-loading {
+  animation: simBtnPulse 1.2s ease-in-out infinite;
+}
+@keyframes simBtnPulse {
+  0%, 100% { opacity: 0.75; }
+  50% { opacity: 0.5; }
+}
+
+/* spinner */
+.sim-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: simSpin 0.7s linear infinite;
+}
+@keyframes simSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* fadeIn */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================
+   Element Plus select dark theming (shallow override)
+   ============================================================ */
+.sim-select :deep(.el-input__wrapper) {
+  background: #0a0f14;
+  border: 1px solid rgba(100, 116, 139, 0.35);
+  border-radius: 10px;
+  box-shadow: none;
+  padding: 4px 8px;
+}
+.sim-select :deep(.el-input__inner) {
+  color: #e2e8f0;
+  font-size: 14px;
+}
+.sim-select :deep(.el-input__inner::placeholder) {
+  color: #475569;
+}
+</style>

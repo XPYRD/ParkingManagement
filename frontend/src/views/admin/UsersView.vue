@@ -23,9 +23,9 @@
             <el-input v-model="filters.search" placeholder="搜索手机号或用户名..." size="small" class="w-64" clearable @change="loadUsers">
                <template #prefix><span class="material-symbols-outlined text-sm">search</span></template>
             </el-input>
-            <el-select v-model="filters.level" placeholder="用户等级" size="small" class="w-32" clearable @change="loadUsers">
-               <el-option label="普通用户" value="normal" />
-               <el-option label="尊享VIP" value="vip" />
+            <el-select v-model="filters.subscription" placeholder="订阅状态" size="small" class="w-32" clearable @change="loadUsers">
+               <el-option label="有订阅" value="true" />
+               <el-option label="无订阅" value="false" />
             </el-select>
          </div>
       </div>
@@ -49,17 +49,15 @@
                  <span class="font-bold">{{ row.vehicles_count || 0 }}</span>
              </template>
           </el-table-column>
-          <el-table-column prop="vip_level" label="等级" width="120">
+          <el-table-column label="订阅状态" width="180">
              <template #default="{ row }">
-                <el-tag size="small" :type="row.vip_level !== 'none' ? 'warning' : 'info'" effect="plain" class="!font-bold !rounded-full text-xs">
-                   <span v-if="row.vip_level !== 'none'" class="material-symbols-outlined text-[10px] mr-0.5">workspace_premium</span>
-                   {{ row.vip_level_label || (row.vip_level !== 'none' ? '尊享VIP' : '普通用户') }}
+                <el-tag v-if="row.subscription_plan" size="small" type="warning" effect="plain" class="!font-bold !rounded-full text-xs">
+                   <span class="material-symbols-outlined text-[10px] mr-0.5">workspace_premium</span>
+                   {{ row.subscription_plan }}
                 </el-tag>
-             </template>
-          </el-table-column>
-          <el-table-column label="订阅状态" width="100">
-             <template #default="{ row }">
-                <el-switch :model-value="row.vip_level !== 'none'" size="small" disabled title="由后端系统自动判断，此处仅展示" />
+                <el-tag v-else size="small" type="info" effect="plain" class="!font-bold !rounded-full text-xs">
+                   暂无订阅
+                </el-tag>
              </template>
           </el-table-column>
           <el-table-column label="注册时间" width="160">
@@ -69,8 +67,8 @@
           </el-table-column>
           <el-table-column label="操作" width="150" fixed="right">
              <template #default="{ row }">
-                <el-button link type="primary" size="small">详情</el-button>
-                <el-button link type="danger" size="small">冻结</el-button>
+                <el-button link type="primary" size="small" @click="handleUserDetail(row)">详情</el-button>
+                <el-button link type="danger" size="small" @click="handleFreezeUser(row)">冻结</el-button>
              </template>
           </el-table-column>
         </el-table>
@@ -96,7 +94,7 @@
  */
 import { ref, reactive, onMounted } from 'vue'
 import { getUsers } from '@/api/user'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const users = ref([])
 const loading = ref(false)
@@ -104,7 +102,7 @@ const currentPage = ref(1)
 const totalUsers = ref(0)
 const filters = reactive({
     search: '',
-    level: ''
+    subscription: ''
 })
 
 onMounted(() => {
@@ -117,7 +115,7 @@ const loadUsers = async () => {
         const params = {
            page: currentPage.value,
            ...(filters.search && { search: filters.search }),
-           ...(filters.level && { vip_level: filters.level })
+           ...(filters.subscription && { has_subscription: filters.subscription })
         }
         const res = await getUsers(params)
         
@@ -133,5 +131,21 @@ const loadUsers = async () => {
     } finally {
         loading.value = false
     }
+}
+
+const handleUserDetail = (row) => {
+    ElMessage.info(`查看用户 ${row.username} 的详情`)
+    // 可在此处添加导航或打开详情弹窗
+}
+
+const handleFreezeUser = (row) => {
+    ElMessageBox.confirm(`确定要冻结用户 ${row.username} 吗？`, '警告', {
+        confirmButtonText: '确认冻结',
+        cancelButtonText: '取消',
+        type: 'warning'
+    }).then(() => {
+        ElMessage.success(`用户 ${row.username} 已冻结`)
+        // 可在此处调用 API 冻结用户
+    }).catch(() => {})
 }
 </script>

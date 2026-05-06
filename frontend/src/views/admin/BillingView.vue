@@ -13,7 +13,7 @@
              <span class="material-symbols-outlined" style="font-size: 100px;">account_balance_wallet</span>
           </div>
           <p class="text-white/80 text-xs font-bold uppercase tracking-widest mb-2">累计营收</p>
-          <p class="text-4xl font-black font-headline mb-4">¥ {{ (summary.total_revenue || 0).toFixed(2) }}</p>
+          <p class="text-4xl font-black font-headline mb-4">¥ {{ toNum(summary.total_revenue).toFixed(2) }}</p>
        </div>
 
        <!-- 支付方式占比图 -->
@@ -38,7 +38,7 @@
 
        <div class="bg-surface-container-lowest p-6 rounded-2xl shadow-sm border border-outline-variant/20">
           <p class="text-sm font-bold text-on-surface mb-4">客单价 (ARPU)</p>
-          <p class="text-3xl font-black font-headline text-primary mb-2">¥ {{ (summary.avg_amount || 0).toFixed(2) }}</p>
+          <p class="text-3xl font-black font-headline text-primary mb-2">¥ {{ toNum(summary.avg_amount).toFixed(2) }}</p>
           <p class="text-xs text-secondary leading-relaxed">
              基于当前计费规则下的平均每车次收益，建议适时调整高峰时段附加费率以优化整体运营收入。
           </p>
@@ -49,16 +49,17 @@
     <div class="mb-8" v-loading="loadingRules">
        <div class="flex justify-between items-center mb-4">
           <h2 class="text-lg font-bold text-on-surface">定价规则</h2>
-          <el-button type="primary" plain size="small"><span class="material-symbols-outlined text-sm mr-1">add</span>新增规则</el-button>
+          <el-button type="primary" plain size="small" @click="openCreateDialog"><span class="material-symbols-outlined text-sm mr-1">add</span>新增规则</el-button>
        </div>
        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div v-for="rule in pricingRules" :key="rule.id" class="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant/20 hover:border-primary/50 transition-colors cursor-pointer group">
+          <div v-for="rule in pricingRules" :key="rule.id" class="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant/20 hover:border-primary/50 transition-colors cursor-pointer group" @click="openEditDialog(rule)">
              <div class="flex justify-between items-start mb-3">
-                <span class="font-bold text-sm text-on-surface">{{ rule.name }}</span>
-                <el-switch v-model="rule.is_active" size="small" @change="toggleRule(rule)" />
+                <span class="font-bold text-sm text-on-surface">{{ rule.rate_type_label }}</span>
+                <el-button size="small" text @click.stop="openEditDialog(rule)"><span class="material-symbols-outlined text-sm">settings</span></el-button>
              </div>
-             <p class="text-2xl font-extrabold text-primary font-headline mb-1">¥ {{ rule.price }}</p>
-             <p class="text-xs text-secondary">{{ rule.rate_type === 'hourly' ? '按小时' : (rule.rate_type === 'daily' ? '按天' : '按月') }}</p>
+             <p class="text-2xl font-extrabold text-primary font-headline mb-1">{{ rule.value }}</p>
+             <p class="text-xs text-secondary">{{ rule.unit }}</p>
+             <p class="text-xs text-secondary mt-2">{{ rule.description }}</p>
           </div>
        </div>
     </div>
@@ -104,6 +105,35 @@
           />
        </div>
     </div>
+
+    <!-- 定价规则编辑弹窗 -->
+    <el-dialog v-model="ruleDialogVisible" :title="isEditing ? '编辑定价规则' : '新增定价规则'" width="520px" destroy-on-close>
+      <el-form :model="ruleForm" label-position="top">
+        <el-form-item label="费率类型" prop="rate_type">
+          <el-select v-model="ruleForm.rate_type" class="w-full" :disabled="isEditing">
+            <el-option label="按时计费" value="hourly" />
+            <el-option label="单次计费" value="flat" />
+            <el-option label="每日封顶" value="daily_max" />
+            <el-option label="夜间优惠" value="nightly" />
+            <el-option label="免费时长" value="free_minutes" />
+            <el-option label="超时费率" value="overtime" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="费率值" prop="value">
+          <el-input-number v-model="ruleForm.value" :min="0" :step="0.5" class="w-full" controls-position="right" />
+        </el-form-item>
+        <el-form-item label="单位" prop="unit">
+          <el-input v-model="ruleForm.unit" disabled placeholder="元/小时" />
+        </el-form-item>
+        <el-form-item label="说明" prop="description">
+          <el-input v-model="ruleForm.description" type="textarea" :rows="3" placeholder="规则描述" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="ruleDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingRule" @click="submitRuleForm">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -111,8 +141,8 @@
 /**
  * 收费管理后台 — 接入 API 真实数据
  */
-import { ref, onMounted } from 'vue'
-import { getPricingRules, getRevenueSummary, getPayments, updatePricingRule } from '@/api/payment'
+import { ref, onMounted, reactive } from 'vue'
+import { getPricingRules, getRevenueSummary, getPayments, updatePricingRule, createPricingRule } from '@/api/payment'
 import { ElMessage } from 'element-plus'
 
 const loadingSummary = ref(false)
@@ -127,11 +157,71 @@ const searchTx = ref('')
 const txPage = ref(1)
 const txTotal = ref(0)
 
+// 定价规则编辑弹窗
+const ruleDialogVisible = ref(false)
+const isEditing = ref(false)
+const savingRule = ref(false)
+const editingRuleId = ref(null)
+const ruleForm = reactive({
+  rate_type: 'hourly',
+  value: 0,
+  unit: '元/小时',
+  description: '',
+})
+
+function openEditDialog(rule) {
+  isEditing.value = true
+  editingRuleId.value = rule.id
+  ruleForm.rate_type = rule.rate_type || 'hourly'
+  ruleForm.value = rule.value || 0
+  ruleForm.unit = '元/小时'
+  ruleForm.description = rule.description || ''
+  ruleDialogVisible.value = true
+}
+
+function openCreateDialog() {
+  isEditing.value = false
+  editingRuleId.value = null
+  ruleForm.rate_type = 'hourly'
+  ruleForm.value = 0
+  ruleForm.unit = '元/小时'
+  ruleForm.description = ''
+  ruleDialogVisible.value = true
+}
+
+async function submitRuleForm() {
+  savingRule.value = true
+  try {
+    const payload = {
+      rate_type: ruleForm.rate_type,
+      value: ruleForm.value,
+      unit: ruleForm.unit,
+      description: ruleForm.description,
+      is_active: true,
+    }
+    if (isEditing.value) {
+      await updatePricingRule(editingRuleId.value, payload)
+      ElMessage.success('定价规则已更新')
+    } else {
+      await createPricingRule(payload)
+      ElMessage.success('定价规则已创建')
+    }
+    ruleDialogVisible.value = false
+    await loadRules()
+  } catch (e) {
+    ElMessage.error('保存失败')
+  } finally {
+    savingRule.value = false
+  }
+}
+
 onMounted(() => {
   loadSummary()
   loadRules()
   loadTransactions()
 })
+
+const toNum = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n }
 
 const loadSummary = async () => {
    loadingSummary.value = true
@@ -149,7 +239,7 @@ const getPercent = (method) => {
    if (!summary.value.method_breakdown) return 0
    const item = summary.value.method_breakdown.find(m => m.method === method)
    if (!item || !summary.value.total_revenue) return 0
-   return Math.round((item.total / summary.value.total_revenue) * 100)
+   return Math.round((toNum(item.total) / toNum(summary.value.total_revenue)) * 100)
 }
 
 const loadRules = async () => {

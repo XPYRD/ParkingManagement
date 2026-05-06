@@ -49,6 +49,7 @@ export async function getParkingSpaceStatistics() {
     const total = Number(item?.total || 0)
     const occupied = Number(item?.occupied || 0)
     const free = Number(item?.free || 0)
+    const maintenance = Number(item?.maintenance || 0)
     const reserved = Math.max(0, total - occupied - free)
 
     acc[floor] = {
@@ -57,7 +58,7 @@ export async function getParkingSpaceStatistics() {
       free_regular: free,
       free_charging: 0,
       reserved,
-      maintenance: 0,
+      maintenance,
     }
     return acc
   }, {})
@@ -127,7 +128,7 @@ export function recognizePlateFromImage(file, scene = 'entry') {
   }
 
   return axios
-    .post('/api/v1/ai/recognize/', buildFormData(), { headers, timeout: 30000 })
+    .post('/api/v1/ai/recognize/', buildFormData(), { headers, timeout: 120000 })
     .then((res) => res.data)
     .catch((err) => {
       const status = Number(err?.response?.status || 0)

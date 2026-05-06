@@ -22,6 +22,7 @@ router.register('subscription-plans', views.SubscriptionPlanViewSet, basename='s
 router.register('rules', views.PricingRuleViewSet, basename='pricing-rule')
 router.register('balance', views.UserBalanceViewSet, basename='balance')
 router.register('topups', views.TopUpRecordViewSet, basename='topup')
+router.register('bank-cards', views.BankCardViewSet, basename='bankcard')
 
 urlpatterns = [
     path('', include(router.urls)),

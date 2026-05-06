@@ -212,25 +212,51 @@
                   {{ selectedPaymentMethod === 'alipay' ? '✓' : '○' }}
                 </span>
              </div>
-             <div class="flex items-center justify-between p-3 border border-outline-variant/30 bg-white/5 rounded-xl transition-all"
-               :class="hasBankCard ? 'hover:bg-purple-50 cursor-pointer' : 'opacity-60 cursor-not-allowed'"
-               @click="selectMainPaymentMethod('card')">
-                <div class="flex items-center gap-3">
+             <!-- 已有银行卡：展示卡片列表 -->
+             <template v-if="bankCards.length > 0">
+               <div
+                 v-for="card in bankCards"
+                 :key="card.id"
+                 class="flex items-center justify-between p-3 border rounded-xl transition-all cursor-pointer"
+                 :class="selectedPaymentMethod === 'card' && selectedBankCardId === card.id ? 'border-purple-400 bg-purple-50' : 'border-outline-variant/30 bg-white/5 hover:bg-purple-50'"
+                 @click="selectBankCard(card.id)"
+               >
+                 <div class="flex items-center gap-3 min-w-0">
+                   <div class="w-10 h-10 rounded flex items-center justify-center bg-white flex-shrink-0">
+                     <img :src="getBankIcon(card.bank_name)" class="w-8 h-8 object-contain" alt="" />
+                   </div>
+                   <div class="min-w-0">
+                     <p class="font-bold text-sm text-on-surface truncate">{{ card.bank_name }}</p>
+                     <p class="text-xs text-secondary">{{ (card.card_type || '储蓄卡') + ' · ****' + card.card_last4 }}</p>
+                   </div>
+                 </div>
+                 <span class="text-xl flex-shrink-0 ml-2" :class="selectedPaymentMethod === 'card' && selectedBankCardId === card.id ? 'text-purple-500' : 'text-gray-300'">
+                   {{ selectedPaymentMethod === 'card' && selectedBankCardId === card.id ? '✓' : '○' }}
+                 </span>
+               </div>
+               <div class="text-right">
+                 <el-button type="primary" link @click="openAddCardDialog">
+                   <span class="material-symbols-outlined text-sm mr-1">add</span>添加银行卡
+                 </el-button>
+               </div>
+             </template>
+             <!-- 无银行卡：占位提示 + 添加按钮 -->
+             <template v-else>
+               <div class="flex items-center justify-between p-3 border border-outline-variant/30 bg-white/5 rounded-xl transition-all opacity-60 cursor-not-allowed">
+                 <div class="flex items-center gap-3">
                    <div class="w-10 h-10 rounded flex items-center justify-center">
-                       <img :src="paymentMethodIcons.card" alt="银行卡" class="w-6 h-6 object-contain" />
+                     <img :src="paymentMethodIcons.card" alt="银行卡" class="w-6 h-6 object-contain" />
                    </div>
                    <div>
                      <p class="font-bold text-sm text-on-surface">银行卡</p>
-                     <p class="text-xs text-secondary">{{ hasBankCard ? '已添加银行卡' : '请先添加银行卡' }}</p>
+                     <p class="text-xs text-secondary">请先添加银行卡</p>
                    </div>
-                </div>
-                <span class="text-xl" :class="selectedPaymentMethod === 'card' && hasBankCard ? 'text-purple-500' : 'text-gray-300'">
-                  {{ selectedPaymentMethod === 'card' && hasBankCard ? '✓' : '○' }}
-                </span>
-             </div>
-             <div v-if="!hasBankCard" class="text-right">
-               <el-button type="primary" link @click="openAddCardDialog">添加银行卡</el-button>
-             </div>
+                 </div>
+               </div>
+               <div class="text-right">
+                 <el-button type="primary" link @click="openAddCardDialog">添加银行卡</el-button>
+               </div>
+             </template>
           </div>
         </section>
       </div>
@@ -530,9 +556,12 @@ import {
   payWithBalance,
   createSandboxPayment,
   confirmSandboxPayment,
+  getBankCards,
+  addBankCard,
 } from '@/api/payment'
 import { getCurrentSessions } from '@/api/parking'
 import { hasBoundBankCard, setBankCardBound } from '@/utils/bankCard'
+import { detectBankByCardNumber, detectCardTypeByCardNumber } from '@/utils/bankBin'
 import { getDefaultPaymentMethod } from '@/utils/paymentPreference'
 
 const router = useRouter()
@@ -580,6 +609,8 @@ const paymentMethodIcons = {
   card: '/银行卡.svg',
 }
 const hasBankCard = ref(false)
+const bankCards = ref([])
+const selectedBankCardId = ref(null)
 const showAddCardDialog = ref(false)
 const bankCardForm = ref({
   phone: '',
@@ -670,8 +701,60 @@ async function loadUserBalance() {
   }
 }
 
+const BANK_ICON_MAP = {
+  '中国工商银行': '/银行-工商.svg',
+  '工商银行': '/银行-工商.svg',
+  '中国建设银行': '/银行-建设.svg',
+  '建设银行': '/银行-建设.svg',
+  '中国农业银行': '/银行-农行.svg',
+  '农业银行': '/银行-农行.svg',
+  '中国银行': '/银行-中国银行.svg',
+  '交通银行': '/银行-交通.svg',
+  '招商银行': '/银行-招商.svg',
+  '平安银行': '/银行-平安.svg',
+  '浦发银行': '/银行-浦发.svg',
+  '兴业银行': '/银行-兴业.svg',
+  '中信银行': '/银行-中信.svg',
+  '光大银行': '/银行-光大.svg',
+  '华夏银行': '/银行-华夏.svg',
+  '民生银行': '/银行-民生.svg',
+  '中国邮政储蓄银行': '/银行-邮政储蓄.svg',
+  '邮政储蓄银行': '/银行-邮政储蓄.svg',
+  '上海银行': '/银行-上海.svg',
+  '东亚银行': '/银行-东亚.svg',
+  '南京银行': '/银行-南京.svg',
+  '宁波银行': '/银行-宁波.svg',
+  '杭州银行': '/银行-杭州.svg',
+  '汇丰银行': '/银行-汇丰.svg',
+  '渣打银行': '/银行-渣打.svg',
+  '花旗银行': '/银行-花旗.svg',
+  '浙商银行': '/银行-浙商.svg',
+  '恒丰银行': '/银行-恒丰.svg',
+  '苏宁银行': '/银行-苏宁.svg',
+}
+function getBankIcon(bankName) {
+  return BANK_ICON_MAP[bankName] || '/银行卡.svg'
+}
+
+function selectBankCard(cardId) {
+  selectedBankCardId.value = cardId
+  selectedPaymentMethod.value = 'card'
+}
+
 onMounted(async () => {
-  hasBankCard.value = hasBoundBankCard()
+  // 从 API 加载银行卡数据，而非仅依赖 localStorage
+  try {
+    const cards = await getBankCards({ is_active: true })
+    const list = Array.isArray(cards) ? cards : (cards?.results || [])
+    bankCards.value = list
+    hasBankCard.value = list.length > 0
+    if (hasBankCard.value) {
+      setBankCardBound(true)
+      selectedBankCardId.value = list[0].id
+    }
+  } catch {
+    hasBankCard.value = hasBoundBankCard()
+  }
   const defaultMethod = getDefaultPaymentMethod('balance')
   selectedPaymentMethod.value = (!hasBankCard.value && defaultMethod === 'card') ? 'wechat' : defaultMethod
   // 获取用户余额
@@ -738,7 +821,7 @@ function handleBankCardPuzzleSlide() {
   }
 }
 
-function handleAddBankCard() {
+async function handleAddBankCard() {
   const phone = String(bankCardForm.value.phone || '').replace(/\D/g, '')
   const holder = String(bankCardForm.value.holder || '').trim()
   const number = String(bankCardForm.value.number || '').replace(/\D/g, '')
@@ -770,9 +853,29 @@ function handleAddBankCard() {
     return
   }
 
-  setBankCardBound(true)
-  hasBankCard.value = true
-  selectedPaymentMethod.value = 'card'
+  // 调用后端 API 持久化银行卡
+  try {
+    const bank = detectBankByCardNumber(number)
+    const cardType = detectCardTypeByCardNumber(number)
+    const res = await addBankCard({
+      bank_name: bank?.name || '银行卡',
+      card_type: cardType || '',
+      holder_name: holder,
+      card_last4: number.slice(-4),
+      bin_prefix: number.slice(0, 6),
+      is_default: bankCards.value.length === 0,
+    })
+    const card = res?.data || res
+    bankCards.value.push(card)
+    hasBankCard.value = true
+    selectedBankCardId.value = card.id
+    setBankCardBound(true)
+    selectedPaymentMethod.value = 'card'
+  } catch (err) {
+    ElMessage.error('银行卡保存失败: ' + (err.response?.data?.detail || err.message))
+    return
+  }
+
   bankCardForm.value = { phone: '', holder: '', number: '', code: '' }
   bankCardHumanVerified.value = false
   resetBankCardPuzzleCaptcha()

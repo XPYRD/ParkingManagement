@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 *)",
+      "Bash(python *)",
+      "Bash(pip show *)",
+      "Bash(pip install *)",
+      "Bash(pip index *)",
+      "Bash(pip download *)",
+      "Bash(set PYTHONIOENCODING=utf-8)",
+      "Bash(node *)"
+    ]
+  }
+}

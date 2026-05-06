@@ -220,3 +220,13 @@ CORS_ALLOWED_ORIGINS = [
     'http://127.0.0.1:8180',
 ]
 CORS_ALLOW_CREDENTIALS = True
+
+# ============================================================
+# 测试配置 — 使用 SQLite 内存数据库避免依赖 MySQL
+# ============================================================
+import sys
+if 'test' in sys.argv:
+    DATABASES['default'] = {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': ':memory:',
+    }

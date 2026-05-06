@@ -50,21 +50,21 @@ class Command(BaseCommand):
         clear = options['clear']
         all_floors = options['all_floors']
         
-        floors = ['B1', 'B2', 'B3'] if all_floors else [options['floor']]
+        floors = ['B2', 'B1', '1F'] if all_floors else [options['floor']]
 
         # Clear existing records if requested
         if clear:
             count = ParkingSpace.objects.count()
             ParkingSpace.objects.all().delete()
             self.stdout.write(
-                self.style.SUCCESS(f'✅ Cleared {count} existing ParkingSpace records')
+                self.style.SUCCESS(f'[OK] Cleared {count} existing ParkingSpace records')
             )
 
         total_created = 0
         total_updated = 0
 
         for floor in floors:
-            self.stdout.write(self.style.WARNING(f'\n📍 正在初始化 {floor} 楼层...'))
+            self.stdout.write(self.style.WARNING(f'\n[LOC] 正在初始化 {floor} 楼层...'))
             created_count = 0
             updated_count = 0
 
@@ -85,6 +85,7 @@ class Command(BaseCommand):
                     obj, created = ParkingSpace.objects.get_or_create(
                         space_id=space_id,
                         defaults={
+                            'floor': floor,
                             'qr_code_token': qr_token,
                             'status': False,
                             'x': x,
@@ -107,21 +108,21 @@ class Command(BaseCommand):
             
             self.stdout.write(
                 self.style.SUCCESS(
-                    f'   ✅ {floor} 楼层完成: 创建={created_count}, 更新={updated_count}, 总数={total}'
+                    f'   [OK] {floor} 楼层完成: 创建={created_count}, 更新={updated_count}, 总数={total}'
                 )
             )
 
         # Final summary
         self.stdout.write(self.style.SUCCESS(
-            f'\n✅ 所有楼层初始化完成:\n'
+            f'\n[OK] 所有楼层初始化完成:\n'
             f'   创建总数: {total_created}\n'
             f'   更新总数: {total_updated}\n'
             f'   涵盖楼层: {", ".join(floors)}'
         ))
 
         # Display API endpoints
-        self.stdout.write(self.style.WARNING('\n🔌 可用的 API 端点:'))
-        self.stdout.write('  • GET  /api/v1/map/spaces/')
-        self.stdout.write('  • POST /api/v1/hardware/webhook/')
-        self.stdout.write('  • POST /api/v1/parking_spaces/bind/')
-        self.stdout.write('  • GET  /api/v1/map/find_car/?plate_number=京A88888')
+        self.stdout.write(self.style.WARNING('\n[API] 可用的 API 端点:'))
+        self.stdout.write('  - GET  /api/v1/map/spaces/')
+        self.stdout.write('  - POST /api/v1/hardware/webhook/')
+        self.stdout.write('  - POST /api/v1/parking_spaces/bind/')
+        self.stdout.write('  - GET  /api/v1/map/find_car/?plate_number=JingA88888')

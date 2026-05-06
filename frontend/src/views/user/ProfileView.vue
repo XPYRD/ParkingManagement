@@ -42,37 +42,28 @@
           </el-form>
         </div>
 
+        <!-- 修改密码 -->
+        <div class="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-outline-variant/20">
+          <h3 class="text-sm font-bold text-on-surface uppercase tracking-widest mb-4">安全设置</h3>
+          <p class="text-xs text-secondary mb-4">定期更换密码可提高账户安全性</p>
+          <el-button plain class="!w-full" @click="passwordDialogVisible = true">
+            <span class="material-symbols-outlined text-sm mr-1">lock</span> 修改密码
+          </el-button>
+        </div>
+
         <!-- 偏好设置 -->
         <div class="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-outline-variant/20">
           <h3 class="text-sm font-bold text-on-surface uppercase tracking-widest mb-4">偏好设置</h3>
-          <div class="space-y-4">
-             <div class="flex items-center justify-between">
-                <div>
-                   <p class="text-sm font-bold text-on-surface">短信通知</p>
-                   <p class="text-xs text-secondary mt-0.5">接收车辆停放、费用等重要通知</p>
-                </div>
-                <el-switch v-model="prefs.sms" />
-             </div>
-             <el-divider class="!my-0" />
-             <div class="flex items-center justify-between">
-                <div>
-                   <p class="text-sm font-bold text-on-surface">无感支付</p>
-                   <p class="text-xs text-secondary mt-0.5">出场时自动扣除停车费</p>
-                </div>
-                <el-switch v-model="prefs.autoPay" />
-             </div>
-             <el-divider class="!my-0" />
-             <div>
-               <p class="text-sm font-bold text-on-surface">默认支付方式</p>
-               <p class="text-xs text-secondary mt-0.5 mb-2">用于首页快速缴费、预约支付、停车费支付的默认选项</p>
-               <el-select v-model="prefs.defaultPaymentMethod" class="w-full" @change="handleChangeDefaultPaymentMethod">
-                <el-option label="余额支付" value="balance" />
-                <el-option label="微信支付" value="wechat" />
-                <el-option label="支付宝" value="alipay" />
-                <el-option label="银行卡支付" value="card" :disabled="!hasBankCard" />
-               </el-select>
-               <p v-if="!hasBankCard" class="text-xs text-slate-500 mt-1">未添加银行卡时不可设为默认银行卡支付。</p>
-             </div>
+          <div>
+            <p class="text-sm font-bold text-on-surface">默认支付方式</p>
+            <p class="text-xs text-secondary mt-0.5 mb-2">用于首页快速缴费、预约支付、停车费支付的默认选项</p>
+            <el-select v-model="prefs.defaultPaymentMethod" class="w-full" @change="handleChangeDefaultPaymentMethod">
+              <el-option label="余额支付" value="balance" />
+              <el-option label="微信支付" value="wechat" />
+              <el-option label="支付宝" value="alipay" />
+              <el-option label="银行卡支付" value="card" :disabled="!hasBankCard" />
+            </el-select>
+            <p v-if="!hasBankCard" class="text-xs text-slate-500 mt-1">未添加银行卡时不可设为默认银行卡支付。</p>
           </div>
         </div>
 
@@ -114,11 +105,7 @@
                       </div>
                    </div>
                 </div>
-                <div class="grid grid-cols-2 gap-2 text-sm text-secondary border-t border-outline-variant/20 pt-4 mb-4">
-                   <span>类型：{{ car.vehicle_type === 'car' ? '小型车' : (car.vehicle_type === 'suv' ? 'SUV' : '其他') }}</span>
-                   <span>挂牌：{{ car.color || '未知' }}</span>
-                </div>
-                <div class="flex gap-2" :class="!car.is_primary && 'opacity-0 group-hover:opacity-100 md:opacity-100 transition-opacity'">
+                <div class="flex gap-2 border-t border-outline-variant/20 pt-4 mt-4" :class="!car.is_primary && 'opacity-0 group-hover:opacity-100 md:opacity-100 transition-opacity'">
                    <el-button size="small" v-if="!car.is_primary" @click="handleSetPrimary(car.id)">设为默认</el-button>
                    <el-button size="small" type="primary" plain class="!flex-1" @click="showEditCarDialog(car)">编辑信息</el-button>
                    <el-button size="small" type="danger" plain @click="handleDeleteCar(car.id)">解绑</el-button>
@@ -141,8 +128,9 @@
           <div class="space-y-4" v-loading="loadingRes">
              <div v-for="res in reservations" :key="res.id" class="bg-surface-container-lowest rounded-xl p-4 border border-outline-variant/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div class="flex items-center gap-4">
-                   <div class="w-10 h-10 rounded-lg flex items-center justify-center" :class="res.status === 'pending' ? 'bg-amber-50 text-amber-600' : 'bg-surface-container-high text-secondary'">
-                      <span class="material-symbols-outlined">{{ res.status === 'pending' ? 'pending_actions' : 'check_circle' }}</span>
+                   <div class="w-10 h-10 rounded-lg flex items-center justify-center"
+                        :class="statusIconClass(res.status)">
+                      <span class="material-symbols-outlined">{{ statusIcon(res.status) }}</span>
                    </div>
                    <div>
                       <p class="font-bold text-on-surface text-sm">{{ res.spot_detail ? `${res.spot_detail.floor}层 - ${res.spot_detail.zone}区 - ${res.spot_detail.spot_id}` : '未分配车位' }}</p>
@@ -150,10 +138,10 @@
                    </div>
                 </div>
                 <div class="flex items-center justify-between md:justify-end gap-6 w-full md:w-auto">
-                   <span class="font-bold text-sm" :class="res.status === 'pending' ? 'text-amber-600' : 'text-secondary'">
-                     {{ res.status === 'pending' ? '即将开始' : (res.status === 'active' ? '进行中' : (res.status === 'completed' ? '已完成' : '已取消')) }}
+                   <span class="font-bold text-sm" :class="statusTextClass(res.status)">
+                     {{ res.status_label || res.status }}
                    </span>
-                   <el-button v-if="res.status === 'pending'" size="small" plain type="danger" @click="handleCancelRes(res.id)">取消</el-button>
+                   <el-button v-if="res.status === 'pending' || res.status === 'confirmed'" size="small" plain type="danger" @click="handleCancelRes(res.id)">取消</el-button>
                    <el-button v-else size="small" plain>再订一次</el-button>
                 </div>
              </div>
@@ -221,17 +209,48 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- 修改密码弹窗 -->
+    <el-dialog v-model="passwordDialogVisible" title="修改密码" width="420px" destroy-on-close>
+      <el-form :model="passwordForm" ref="passwordFormRef" label-position="top">
+        <el-form-item label="原密码" prop="old_password" :rules="[{ required: true, message: '请输入原密码' }]">
+          <el-input v-model="passwordForm.old_password" type="password" show-password placeholder="请输入当前密码" />
+        </el-form-item>
+        <el-form-item label="新密码" prop="new_password" :rules="[{ required: true, min: 8, max: 16, message: '密码长度8-16位' }]">
+          <el-input v-model="passwordForm.new_password" type="password" show-password placeholder="8-16位新密码" />
+        </el-form-item>
+        <el-form-item label="确认新密码" prop="new_password_confirm" :rules="[{ required: true, message: '请再次输入新密码' }]">
+          <el-input v-model="passwordForm.new_password_confirm" type="password" show-password placeholder="再次输入新密码" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="passwordDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingPassword" @click="submitChangePassword">确认修改</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getProfile, updateProfile, getVehicles, deleteVehicle, setPrimaryVehicle, addVehicle } from '@/api/user'
+import { getProfile, updateProfile, getVehicles, deleteVehicle, setPrimaryVehicle, addVehicle, changePassword } from '@/api/user'
 import { getReservations, cancelReservation } from '@/api/parking'
 import PlateNumberInput from '@/components/PlateNumberInput.vue'
 import { hasBoundBankCard } from '@/utils/bankCard'
 import { getDefaultPaymentMethod, setDefaultPaymentMethod } from '@/utils/paymentPreference'
+
+// ── 预约状态显示工具 ──
+const STATUS_STYLE = {
+  pending:    { icon: 'pending_actions', bg: 'bg-amber-50 text-amber-600',  text: 'text-amber-600' },
+  confirmed:  { icon: 'event_available', bg: 'bg-blue-50 text-blue-600',     text: 'text-blue-600' },
+  completed:  { icon: 'check_circle',    bg: 'bg-green-50 text-green-600',   text: 'text-green-600' },
+  cancelled:  { icon: 'cancel',          bg: 'bg-gray-100 text-gray-400',    text: 'text-gray-400' },
+  expired:    { icon: 'event_busy',      bg: 'bg-gray-100 text-gray-400',    text: 'text-gray-400' },
+}
+function statusIcon(status)      { return STATUS_STYLE[status]?.icon || 'info' }
+function statusIconClass(status) { return STATUS_STYLE[status]?.bg  || 'bg-surface-container-high text-secondary' }
+function statusTextClass(status) { return STATUS_STYLE[status]?.text || 'text-secondary' }
 
 const profile = ref({})
 const vehicles = ref([])
@@ -254,9 +273,16 @@ const editCarForm = reactive({
   plate_number: ''
 })
 
+const passwordDialogVisible = ref(false)
+const savingPassword = ref(false)
+const passwordFormRef = ref(null)
+const passwordForm = reactive({
+  old_password: '',
+  new_password: '',
+  new_password_confirm: '',
+})
+
 const prefs = reactive({
-  sms: true,
-  autoPay: true,
   defaultPaymentMethod: 'wechat'
 })
 
@@ -275,6 +301,41 @@ function handleChangeDefaultPaymentMethod(method) {
   }
   setDefaultPaymentMethod(method)
   ElMessage.success('默认支付方式已更新')
+}
+
+async function submitChangePassword() {
+  if (!passwordFormRef.value) return
+  await passwordFormRef.value.validate(async (valid) => {
+    if (!valid) return
+    savingPassword.value = true
+    try {
+      await changePassword({
+        old_password: passwordForm.old_password,
+        new_password: passwordForm.new_password,
+        new_password_confirm: passwordForm.new_password_confirm,
+      })
+      ElMessage.success('密码修改成功，下次登录时生效')
+      passwordDialogVisible.value = false
+      passwordForm.old_password = ''
+      passwordForm.new_password = ''
+      passwordForm.new_password_confirm = ''
+    } catch (err) {
+      const data = err?.response?.data
+      if (data?.old_password) {
+        ElMessage.error(data.old_password[0] || '原密码不正确')
+      } else if (data?.new_password_confirm) {
+        ElMessage.error(data.new_password_confirm[0] || '两次密码不一致')
+      } else if (data?.new_password) {
+        ElMessage.error(data.new_password[0] || '密码不符合要求')
+      } else if (data?.detail) {
+        ElMessage.error(data.detail)
+      } else {
+        ElMessage.error('密码修改失败')
+      }
+    } finally {
+      savingPassword.value = false
+    }
+  })
 }
 
 async function loadData() {

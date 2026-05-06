@@ -21,17 +21,22 @@ parking — API 视图
 - POST   /api/v1/hardware/webhook/                硬件推送的车位变化事件
 """
 
+import time
 from pathlib import Path
 import re
+import logging
 
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
 from django.utils import timezone
 from rest_framework import viewsets, permissions, status
+from rest_framework.decorators import permission_classes
 from rest_framework.decorators import action, api_view, parser_classes
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
+
+logger = logging.getLogger(__name__)
 
 from .models import ParkingSession, Reservation, SpotConnection, ParkingSpace
 from payments.models import Subscription
@@ -77,58 +82,117 @@ def _get_plate_ocr_engine():
         return _PLATE_OCR_ENGINE
     try:
         from paddleocr import PaddleOCR  # type: ignore
+        logger.info('初始化 PaddleOCR 引擎...')
         _PLATE_OCR_ENGINE = PaddleOCR(use_angle_cls=True, lang='ch')
-    except Exception:
+        logger.info('✓ PaddleOCR 引擎初始化成功')
+    except ImportError as e:
+        logger.error(f'✗ PaddleOCR 模块未安装或导入失败: {e}')
+        _PLATE_OCR_ENGINE = False
+    except Exception as e:
+        logger.error(f'✗ PaddleOCR 初始化失败: {e}', exc_info=True)
         _PLATE_OCR_ENGINE = False
     return _PLATE_OCR_ENGINE
 
 
+def _infer_energy_type(plate):
+    """
+    根据车牌号推断车辆类型
+    新能源车牌：6位字符（如 粤AD12345），燃油车：5位字符（如 粤A12345）
+    """
+    if not plate:
+        return 'unknown'
+    # 去掉首位的汉字和字母（省份代码），看剩余位数
+    rest = plate[2:] if len(plate) > 2 else ''
+    if len(rest) >= 6:
+        return 'new_energy'
+    return 'ICE'
+
+
 @api_view(['POST'])
+@permission_classes([permissions.AllowAny])
 @parser_classes([MultiPartParser, FormParser])
 def ai_recognize_plate(request):
     """AI 车牌识别接口：供首页进场模拟上传图片识别使用。"""
     image_file = request.FILES.get('image')
     if not image_file:
+        logger.warning('请求缺少 image 文件')
         return Response({'detail': '缺少 image 文件'}, status=status.HTTP_400_BAD_REQUEST)
+
+    logger.info(f'开始识别图片: {image_file.name} (大小: {image_file.size} bytes)')
 
     # 兜底方案：先尝试从文件名中提取车牌
     filename_plate = _extract_plate_from_texts([getattr(image_file, 'name', '')])
+    if filename_plate:
+        logger.info(f'✓ 从文件名提取到车牌: {filename_plate}')
 
     # 主方案：使用 OCR 识别
     ocr_plate = ''
     ocr_engine = _get_plate_ocr_engine()
-    if ocr_engine:
+
+    if not ocr_engine:
+        logger.warning('✗ OCR 引擎未初始化或初始化失败，跳过 OCR 识别，使用文件名兜底')
+    else:
         try:
             import numpy as np  # type: ignore
             import cv2  # type: ignore
 
+            logger.debug('开始读取和解析图片...')
             file_bytes = np.asarray(bytearray(image_file.read()), dtype=np.uint8)
             image_file.seek(0)
+
+            logger.debug(f'图片字节数: {len(file_bytes)}')
             image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-            if image is not None:
+
+            if image is None:
+                logger.error('✗ cv2.imdecode 返回 None，图片格式可能不支持或数据损坏')
+            else:
+                logger.debug(f'✓ 图片成功解析，尺寸: {image.shape}')
+                logger.debug('调用 PaddleOCR 进行识别...')
                 result = ocr_engine.ocr(image, cls=True)
+
+                logger.debug(f'OCR 原始结果类型: {type(result)}, 长度: {len(result) if result else 0}')
+
                 texts = []
-                for block in result or []:
-                    for line in block or []:
-                        if isinstance(line, (list, tuple)) and len(line) >= 2:
-                            rec = line[1]
-                            if isinstance(rec, (list, tuple)) and rec:
-                                texts.append(rec[0])
+                if result:
+                    for block in result:
+                        for line in block or []:
+                            if isinstance(line, (list, tuple)) and len(line) >= 2:
+                                rec = line[1]
+                                if isinstance(rec, (list, tuple)) and rec:
+                                    text = rec[0]
+                                    conf = rec[1] if len(rec) > 1 else 0
+                                    logger.debug(f'    文本="{text}", 置信度={conf:.2f}')
+                                    texts.append(text)
+
+                logger.debug(f'提取文本: {texts}')
                 ocr_plate = _extract_plate_from_texts(texts)
-        except Exception:
+                if ocr_plate:
+                    logger.info(f'✓ OCR 识别到车牌: {ocr_plate}')
+                else:
+                    logger.warning('✗ OCR 识别成功但未提取到有效车牌')
+
+        except ImportError as e:
+            logger.error(f'✗ 缺少依赖库 (numpy/cv2): {e}')
+        except Exception as e:
+            logger.error(f'✗ OCR 识别过程异常: {e}', exc_info=True)
             ocr_plate = ''
 
     plate_number = ocr_plate or filename_plate
     if not plate_number:
+        logger.warning('识别失败：既未从 OCR 提取，也未从文件名提取到车牌')
         return Response({
             'success': False,
             'detail': '未识别到车牌，请重试或手动输入',
             'plate_number': '',
+            'energy_type': 'unknown',
         }, status=status.HTTP_200_OK)
 
+    energy_type = _infer_energy_type(plate_number)
+    logger.info(f'✓ 最终识别结果: {plate_number} (来源: {"ocr" if ocr_plate else "filename"}, 类型: {energy_type})')
     return Response({
         'success': True,
         'plate_number': plate_number,
+        'energy_type': energy_type,
         'source': 'ocr' if ocr_plate else 'filename',
     }, status=status.HTTP_200_OK)
 
@@ -144,7 +208,7 @@ class ParkingSpotViewSet(viewsets.ModelViewSet):
     """
     serializer_class = ParkingSpotSerializer
     queryset = ParkingSpace.objects.all()
-    filterset_fields = ['floor', 'type', 'status']
+    filterset_fields = ['floor']
     search_fields = ['space_id', 'current_plate']
     ordering_fields = ['spot_id', 'floor', 'status']
 
@@ -155,6 +219,39 @@ class ParkingSpotViewSet(viewsets.ModelViewSet):
             return None
         return super().pagination_class
 
+    def filter_queryset(self, queryset):
+        queryset = super().filter_queryset(queryset)
+        status_param = self.request.query_params.get('status', '').strip()
+        type_param = self.request.query_params.get('type', '').strip()
+
+        if status_param:
+            if status_param == 'free':
+                queryset = queryset.filter(
+                    status=False,
+                    current_plate__isnull=True,
+                ).filter(Q(reserved_plate__isnull=True) | Q(reserved_plate=''))
+            elif status_param == 'occupied':
+                queryset = queryset.filter(status=False).exclude(
+                    Q(current_plate__isnull=True) | Q(current_plate='')
+                )
+            elif status_param == 'reserved':
+                queryset = queryset.filter(
+                    status=False,
+                    reserved_plate__isnull=False,
+                ).exclude(reserved_plate='').filter(
+                    Q(current_plate__isnull=True) | Q(current_plate='')
+                )
+            elif status_param == 'maintenance':
+                queryset = queryset.filter(status=True)
+
+        if type_param:
+            if type_param == 'ev':
+                queryset = queryset.filter(type=True)
+            elif type_param == 'standard':
+                queryset = queryset.filter(type=False)
+
+        return queryset
+
     def get_permissions(self):
         """用户端只允许查看，管理端允许增删改"""
         if self.action in ('create', 'update', 'partial_update', 'destroy'):
@@ -162,7 +259,28 @@ class ParkingSpotViewSet(viewsets.ModelViewSet):
         return [permissions.AllowAny()]
 
 
+    @action(detail=True, methods=['post'], url_path='toggle-maintenance')
+    def toggle_maintenance(self, request, pk=None):
+        """
+        切换车位维护状态 — 对应 _8 修停/恢复按钮
+
+        POST /api/v1/parking/spots/{id}/toggle-maintenance/
+        { "maintenance": true }   → 设为维护中
+        { "maintenance": false }  → 恢复正常
+        """
+        spot = self.get_object()
+        maintenance = request.data.get('maintenance')
+        if maintenance is None:
+            return Response({'detail': '缺少 maintenance 字段'}, status=400)
+
+        spot.status = bool(maintenance)
+        spot.save(update_fields=['status'])
+        serializer = self.get_serializer(spot)
+        return Response(serializer.data)
+
+
     @action(detail=False, methods=['get'], url_path='floor-summary')
+    @permission_classes([permissions.AllowAny])
     def floor_summary(self, request):
         """
         按楼层统计车位占用率 — 对应 _2 侧边栏 "空间占用率 84%"
@@ -176,6 +294,7 @@ class ParkingSpotViewSet(viewsets.ModelViewSet):
             floor_qs = ParkingSpace.objects.filter(floor=floor)
             total = floor_qs.count()
             occupied = floor_qs.exclude(Q(current_plate__isnull=True) | Q(current_plate='')).count()
+            maintenance = floor_qs.filter(status=True).count()
             free = floor_qs.filter(status=False).filter(
                 Q(reserved_plate__isnull=True) | Q(reserved_plate='')
             ).filter(Q(current_plate__isnull=True) | Q(current_plate='')).count()
@@ -185,6 +304,7 @@ class ParkingSpotViewSet(viewsets.ModelViewSet):
                 'total': total,
                 'free': free,
                 'occupied': occupied,
+                'maintenance': maintenance,
                 'occupancy_rate': rate,
             })
         return Response(result)
@@ -202,11 +322,17 @@ class ParkingSessionViewSet(viewsets.ModelViewSet):
     search_fields = ['vehicle__plate_number']
     ordering_fields = ['entry_time', 'amount']
 
+    def get_permissions(self):
+        if self.action in ('by_plate', 'quick_pay', 'mark_exit'):
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
+
     def get_queryset(self):
         user = self.request.user
+        if not user.is_authenticated:
+            return ParkingSession.objects.all()
         if user.is_staff:
             return ParkingSession.objects.all()
-        # 用户端：只看自己车辆的会话
         return ParkingSession.objects.filter(vehicle__owner=user)
 
     @action(detail=False, methods=['get'], url_path='current')
@@ -239,6 +365,144 @@ class ParkingSessionViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(sessions, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'], url_path='by-plate')
+    @permission_classes([permissions.AllowAny])
+    def by_plate(self, request):
+        """根据车牌号查询当前活跃停车会话（首页快速缴费·无需登录查询）。"""
+        plate = request.query_params.get('plate', '').strip().upper()
+        if not plate:
+            return Response({'detail': '缺少 plate 参数'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from accounts.models import Vehicle
+        vehicle = Vehicle.objects.filter(plate_number__iexact=plate).first()
+        if not vehicle:
+            return Response({'found': False, 'detail': '未找到该车辆'}, status=status.HTTP_404_NOT_FOUND)
+
+        # 检查车主是否有有效订阅
+        from payments.models import Subscription
+        today = timezone.localdate()
+        has_active_sub = Subscription.objects.filter(
+            user=vehicle.owner,
+            is_active=True,
+            start_date__lte=today,
+            end_date__gte=today,
+        ).exists()
+
+        session = ParkingSession.objects.filter(
+            vehicle=vehicle, exit_time__isnull=True
+        ).first()
+        if not session:
+            return Response({'found': False, 'detail': '该车辆当前无停车会话'}, status=status.HTTP_404_NOT_FOUND)
+
+        # 有订阅则自动标记免费
+        if has_active_sub and session.payment_status != ParkingSession.PaymentStatus.PAID:
+            session.amount = 0
+            session.payment_status = ParkingSession.PaymentStatus.PAID
+            session.save(update_fields=['amount', 'payment_status'])
+
+        now = timezone.now()
+        duration = now - session.entry_time
+        total_minutes = int(duration.total_seconds() / 60)
+        hours = total_minutes // 60
+        mins = total_minutes % 60
+        chargeable_hours = max(1, hours + (1 if mins > 0 else 0))
+
+        return Response({
+            'session_id': session.id,
+            'plate_number': vehicle.plate_number,
+            'entry_time': session.entry_time.isoformat(),
+            'duration_text': f'{hours}小时{mins}分钟',
+            'chargeable_hours': chargeable_hours,
+            'amount': float(session.amount or 0),
+            'payment_state': session.payment_status,
+            'found': True,
+            'subscription_free': has_active_sub,
+        })
+
+    @action(detail=True, methods=['post'], url_path='quick-pay')
+    @permission_classes([permissions.AllowAny])
+    def quick_pay(self, request, pk=None):
+        """快速缴费（无需登录）：检查订阅 → 创建支付 → 返回二维码。"""
+        session = self.get_object()
+        if session.exit_time:
+            return Response({'detail': '车辆已出场'}, status=status.HTTP_400_BAD_REQUEST)
+        if session.payment_status == ParkingSession.PaymentStatus.PAID:
+            return Response({'detail': '该会话已支付'}, status=status.HTTP_400_BAD_REQUEST)
+
+        amount = request.data.get('amount')
+        method = request.data.get('method', 'wechat')
+        plate = request.data.get('plate_number', '').strip().upper()
+
+        # 检查车主是否有有效订阅
+        from payments.models import Subscription
+        today = timezone.localdate()
+        has_active_sub = Subscription.objects.filter(
+            user__vehicles__plate_number__iexact=plate,
+            is_active=True,
+            start_date__lte=today,
+            end_date__gte=today,
+        ).exists()
+
+        if has_active_sub:
+            session.amount = 0
+            session.payment_status = ParkingSession.PaymentStatus.PAID
+            session.save(update_fields=['amount', 'payment_status'])
+            return Response({
+                'payment_state': 'subscription_free',
+                'leave_tip': '当前订阅有效，车辆进出场免费，无需支付',
+                'session_id': session.id,
+            })
+
+        # 无订阅：创建待支付订单
+        from decimal import Decimal, InvalidOperation
+        try:
+            amount_dec = Decimal(str(amount))
+        except (InvalidOperation, TypeError, ValueError):
+            return Response({'detail': '金额格式错误'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from payments.models import Payment
+        transaction_id = f"QUICK_{int(time.time() * 1000)}"
+        payment = Payment.objects.create(
+            user=request.user if request.user.is_authenticated else None,
+            transaction_id=transaction_id,
+            amount=amount_dec,
+            method=method,
+            status=Payment.Status.PENDING,
+            remark=f'快速缴费 {plate}',
+            session_id=session.id,
+        )
+
+        from urllib.parse import quote_plus
+        payload = f"SANDBOX|quick_pay|{transaction_id}|{amount}|{method}"
+        qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=260x260&data={quote_plus(payload)}"
+
+        return Response({
+            'payment_state': 'pending',
+            'transaction_id': transaction_id,
+            'amount': f"{amount_dec:.2f}",
+            'plate_number': plate,
+            'qr_code_url': qr_url,
+            'session_id': session.id,
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='mark-exit')
+    @permission_classes([permissions.AllowAny])
+    def mark_exit(self, request, pk=None):
+        """标记车辆出场（首页模拟出场）。"""
+        session = self.get_object()
+        if session.exit_time:
+            return Response({'detail': '车辆已出场', 'exit_time': session.exit_time.isoformat()})
+
+        session.exit_time = timezone.now()
+        session.save(update_fields=['exit_time'])
+
+        if session.spot:
+            session.spot.current_plate = None
+            session.spot.bind_time = None
+            session.spot.save(update_fields=['current_plate', 'bind_time'])
+
+        return Response({'detail': '出场成功', 'exit_time': session.exit_time.isoformat()})
+
 
 class ReservationViewSet(viewsets.ModelViewSet):
     """
@@ -254,9 +518,23 @@ class ReservationViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_staff:
-            return Reservation.objects.all()
-        return Reservation.objects.filter(user=user)
+        qs = Reservation.objects.all()
+        if not user.is_staff:
+            qs = qs.filter(user=user)
+
+        # 自动将已过期的预约标记为 expired
+        now = timezone.now()
+        qs.filter(
+            status__in=[Reservation.Status.PENDING, Reservation.Status.CONFIRMED],
+            end_date__lt=now.date(),
+        ).update(status=Reservation.Status.EXPIRED)
+        qs.filter(
+            status__in=[Reservation.Status.PENDING, Reservation.Status.CONFIRMED],
+            end_date=now.date(),
+            end_time__lt=now.time(),
+        ).update(status=Reservation.Status.EXPIRED)
+
+        return qs
 
     @action(detail=True, methods=['post'], url_path='cancel')
     def cancel(self, request, pk=None):
@@ -420,8 +698,8 @@ class MapViewSet(viewsets.ViewSet):
         q = cls._normalize_plate(query)
         if not cand or not q:
             return False
-        # 支持完整车牌匹配和后5-6位后缀搜索
-        return cand == q or cand.endswith(q)
+        # 支持完整车牌匹配和后5-6位后缀搜索或模糊匹配
+        return q in cand
 
     @action(detail=False, methods=['get'], url_path='spaces')
     def get_spaces(self, request):
@@ -596,7 +874,51 @@ class HardwareWebhookViewSet(viewsets.ViewSet):
         # 根据事件类型更新状态
         if event_type == 'space_occupied':
             parking_space.current_plate = plate_number
+
+            # 创建停车会话
+            from accounts.models import Vehicle
+            from payments.models import Subscription
+            vehicle = Vehicle.objects.filter(plate_number__iexact=plate_number or '').first()
+            if vehicle:
+                today = timezone.localdate()
+                has_active_sub = Subscription.objects.filter(
+                    user=vehicle.owner,
+                    is_active=True,
+                    start_date__lte=today,
+                    end_date__gte=today,
+                ).exists()
+                ParkingSession.objects.create(
+                    vehicle=vehicle,
+                    spot=parking_space,
+                    entry_time=timezone.now(),
+                    amount=0 if has_active_sub else None,
+                    payment_status=(
+                        ParkingSession.PaymentStatus.PAID
+                        if has_active_sub
+                        else ParkingSession.PaymentStatus.PENDING
+                    ),
+                )
+
         elif event_type == 'space_released':
+            # 关闭对应的活跃会话
+            from accounts.models import Vehicle
+            vehicle = None
+            if plate_number:
+                vehicle = Vehicle.objects.filter(plate_number__iexact=plate_number).first()
+            if vehicle:
+                active_session = ParkingSession.objects.filter(
+                    vehicle=vehicle,
+                    exit_time__isnull=True,
+                ).order_by('-entry_time').first()
+            else:
+                # 无车牌时按车位关闭最近的活跃会话
+                active_session = ParkingSession.objects.filter(
+                    spot=parking_space,
+                    exit_time__isnull=True,
+                ).order_by('-entry_time').first()
+            if active_session:
+                active_session.exit_time = timezone.now()
+                active_session.save(update_fields=['exit_time'])
             parking_space.current_plate = None
         elif event_type == 'space_maintenance':
             parking_space.status = True

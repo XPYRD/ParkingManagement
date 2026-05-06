@@ -51,6 +51,26 @@ export async function findCarByPlate(plateNumber) {
   }
 }
 
+
+/**
+ * 获取导航起点列表
+ *
+ * 对应后端 /api/v1/map/start-points/
+ *
+ * @param {string} floor - 楼层代码（可选）
+ * @returns {Promise<{code: number, data: Array}>}
+ */
+export async function getNavigationStartPoints(floor = null) {
+  try {
+    const response = await axios.get(`${API_BASE}/map/start-points/`, {
+      params: floor ? { floor } : {},
+    })
+    return response.data
+  } catch (error) {
+    console.error('获取导航起点失败:', error)
+    throw error
+  }
+}
 // ========== 硬件 WebHook 接口 ==========
 
 /**

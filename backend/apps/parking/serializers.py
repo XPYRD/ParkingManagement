@@ -16,6 +16,7 @@ from datetime import datetime
 from decimal import Decimal, ROUND_CEILING
 from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
 
 from rest_framework import serializers
 from accounts.models import Vehicle
@@ -232,6 +233,20 @@ class ReservationSerializer(serializers.ModelSerializer):
             is_ev_reservation = (spot and spot.type) or (spot is None and spot_type == 'ev')
             ev_surcharge = ev_surcharge if is_ev_reservation else Decimal('0.00')
             attrs['total_amount'] = (base_amount + ev_surcharge).quantize(Decimal('0.01'))
+
+        # 订阅用户预约免费
+        request = self.context.get('request')
+        if request and request.user and request.user.is_authenticated:
+            from payments.models import Subscription
+            today = date or timezone.localdate()
+            has_active_sub = Subscription.objects.filter(
+                user=request.user,
+                is_active=True,
+                start_date__lte=today,
+                end_date__gte=today,
+            ).exists()
+            if has_active_sub:
+                attrs['total_amount'] = Decimal('0.00')
 
         return attrs
 

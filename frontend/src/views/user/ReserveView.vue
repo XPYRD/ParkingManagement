@@ -49,66 +49,6 @@
             </el-radio-group>
           </el-form-item>
 
-          <el-form-item label="预约楼层">
-            <el-select v-model="reserveForm.floor" placeholder="请选择楼层" size="large" class="w-full">
-              <el-option
-                v-for="floor in floorOptions"
-                :key="floor.value"
-                :label="floor.label"
-                :value="floor.value"
-              />
-            </el-select>
-          </el-form-item>
-
-          <el-form-item label="预约方式">
-            <el-radio-group v-model="reservationMode" class="!flex !w-full gap-2">
-              <el-radio-button label="random" class="flex-1 text-center">随机分配车位</el-radio-button>
-              <el-radio-button label="specific" class="flex-1 text-center">指定特定车位</el-radio-button>
-            </el-radio-group>
-          </el-form-item>
-
-          <el-form-item v-if="reservationMode === 'specific'" label="指定车位">
-            <el-select
-              v-model="reserveForm.spotId"
-              placeholder="请选择具体车位"
-              size="large"
-              class="w-full"
-              filterable
-            >
-              <el-option
-                v-for="spot in specificSpotOptions"
-                :key="spot.id"
-                :label="spot.label"
-                :value="spot.id"
-              />
-            </el-select>
-            <p v-if="reserveForm.spotSpaceId" class="mt-2 text-xs text-secondary">
-              当前指定：{{ reserveForm.spotSpaceId.replace(/^space_/, '') }}
-            </p>
-            <p v-if="!specificSpotOptions.length" class="mt-2 text-xs text-error">
-              当前楼层与类型下无可指定车位，请切换楼层或类型。
-            </p>
-          </el-form-item>
-
-          <div class="rounded-xl border border-outline-variant/30 bg-slate-50 p-3">
-            <div class="flex items-center justify-between text-xs text-secondary">
-              <span>当前楼层可分配余量</span>
-              <span v-if="loadingFloorAvailability">更新中...</span>
-              <span v-else>{{ reserveForm.floor }}</span>
-            </div>
-            <div class="mt-2 flex items-center justify-between">
-              <p class="text-sm text-on-surface">
-                {{ reserveForm.type === 'ev' ? '充电桩车位' : '标准车位' }}可分配
-              </p>
-              <p class="text-lg font-black" :class="selectedTypeAvailableCount > 0 ? 'text-primary' : 'text-error'">
-                {{ selectedTypeAvailableCount }}
-              </p>
-            </div>
-            <p v-if="selectedTypeAvailableCount === 0" class="mt-1 text-xs text-error">
-              当前楼层该类型暂无可分配车位，请切换楼层或类型。
-            </p>
-          </div>
-
           <el-form-item label="关联车辆">
             <el-select v-model="reserveForm.vehicle" placeholder="请选择车辆" size="large" class="w-full">
               <el-option
@@ -198,97 +138,11 @@
           </div>
           <span class="text-xs text-secondary">{{ method.desc }}</span>
         </label>
-        <div v-if="!hasBankCard" class="flex items-center justify-between rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3">
-          <p class="text-xs text-slate-600">未添加银行卡，当前不可使用银行卡支付</p>
-          <el-button type="primary" link @click="openAddBankCardDialog">添加银行卡（模拟验证）</el-button>
-        </div>
       </div>
       <template #footer>
         <div class="flex gap-3">
           <el-button @click="showPaymentDialog = false">取消</el-button>
           <el-button type="primary" :loading="loading" @click="handlePaymentConfirm">确认支付</el-button>
-        </div>
-      </template>
-    </el-dialog>
-
-    <el-dialog
-      v-model="showAddCardDialog"
-      title="添加银行卡（模拟）"
-      width="90%"
-      max-width="460px"
-      :close-on-click-modal="false"
-    >
-      <div class="space-y-4">
-        <div>
-          <label class="block text-sm font-semibold text-slate-700 mb-2">持卡人姓名</label>
-          <el-input v-model="bankCardForm.holder" placeholder="请输入持卡人姓名" />
-        </div>
-
-        <div>
-          <label class="block text-sm font-semibold text-slate-700 mb-2">银行卡号</label>
-          <el-input
-            v-model="bankCardForm.number"
-            placeholder="请输入16-19位银行卡号"
-            maxlength="19"
-            @input="bankCardForm.number = String(bankCardForm.number || '').replace(/\D/g, '')"
-          />
-        </div>
-
-        <div>
-          <label class="block text-sm font-semibold text-slate-700 mb-2">预留手机号</label>
-          <el-input
-            v-model="bankCardForm.phone"
-            placeholder="请输入11位手机号"
-            maxlength="11"
-            @input="bankCardForm.phone = String(bankCardForm.phone || '').replace(/\D/g, '')"
-          />
-        </div>
-
-        <div>
-          <label class="block text-sm font-semibold text-slate-700 mb-2">人机验证</label>
-          <div class="rounded-lg border border-slate-300 p-3 bg-slate-50">
-            <div class="relative h-12 rounded-md bg-gradient-to-r from-slate-100 to-slate-200 overflow-hidden mb-3">
-              <div
-                class="absolute top-2 w-8 h-8 rounded-md border-2 border-dashed border-slate-400 bg-white/70"
-                :style="{ left: `${bankCardPuzzleTarget}px` }"
-              />
-              <div
-                class="absolute top-2 w-8 h-8 rounded-md bg-blue-500/90 border border-white shadow transition-all duration-75"
-                :style="{ left: `${bankCardPuzzleValue}px` }"
-              />
-            </div>
-            <div class="flex gap-2 items-center">
-              <input
-                v-model.number="bankCardPuzzleValue"
-                type="range"
-                min="0"
-                :max="bankCardPuzzleMax"
-                class="w-full"
-                :disabled="bankCardHumanVerified"
-                @input="handleBankCardPuzzleSlide"
-              />
-              <el-button @click="resetBankCardPuzzleCaptcha">重置</el-button>
-            </div>
-          </div>
-          <p class="text-xs mt-1" :class="bankCardHumanVerified ? 'text-emerald-600' : 'text-slate-500'">
-            {{ bankCardHumanVerified ? '拼图校验通过' : '拖动滑块，让蓝色拼图块对齐虚线缺口。' }}
-          </p>
-        </div>
-
-        <div>
-          <label class="block text-sm font-semibold text-slate-700 mb-2">验证码</label>
-          <div class="flex gap-2">
-            <el-input v-model="bankCardForm.code" placeholder="请输入验证码" maxlength="6" />
-            <el-button :disabled="!bankCardHumanVerified" @click="requestBankCardCode">获取验证码</el-button>
-          </div>
-          <p class="text-xs text-slate-500 mt-1">需先通过拖动拼图验证，验证码为模拟发送，请在提示消息中查看。</p>
-        </div>
-      </div>
-
-      <template #footer>
-        <div class="flex gap-3">
-          <el-button @click="showAddCardDialog = false">取消</el-button>
-          <el-button type="primary" @click="confirmAddBankCard">确认添加并验证</el-button>
         </div>
       </template>
     </el-dialog>
@@ -298,15 +152,12 @@
 <script setup>
 import { reactive, computed, ref, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { getVehicles } from '@/api/user'
-import { getFloorSummary, createReservation, getSpacesByFloor } from '@/api/parking'
+import { getSpots, createReservation } from '@/api/parking'
 import { getPricingRules, getUserBalance, payWithBalance, refundBalancePayment } from '@/api/payment'
-import { hasBoundBankCard, setBankCardBound } from '@/utils/bankCard'
-import { getDefaultPaymentMethod } from '@/utils/paymentPreference'
 
 const router = useRouter()
-const route = useRoute()
 
 const dailyReservationFee = ref(30.0)
 const evSurcharge = ref(10.0)
@@ -317,46 +168,15 @@ const reserveForm = reactive({
   startTime: '08:00',
   endTime: '12:00',
   type: 'standard',
-  floor: 'B2',
-  vehicle: '',
-  spotId: null,
-  spotSpaceId: ''
+  vehicle: ''
 })
-
-const reservationMode = ref('random')
-
-const floorOptions = ref([
-  { value: 'B2', label: 'B2 地下二层' },
-  { value: 'B1', label: 'B1 地下一层' },
-  { value: '1F', label: '1F 一楼' }
-])
 
 const myCars = ref([])
 const loading = ref(false)
-const loadingFloorAvailability = ref(false)
 const showPaymentDialog = ref(false)
 const selectedPaymentMethod = ref('balance')
 const userBalance = ref(0)
 const loadingBalance = ref(false)
-const floorSpots = ref([])
-const hasBankCard = ref(false)
-const showAddCardDialog = ref(false)
-const bankCardForm = ref({
-  phone: '',
-  holder: '',
-  number: '',
-  code: '',
-})
-const bankCardHumanVerified = ref(false)
-const bankCardPuzzleMax = 220
-const bankCardPuzzleTarget = ref(0)
-const bankCardPuzzleValue = ref(0)
-const mockCardVerifyCode = ref('')
-const floorAvailability = ref({
-  total: 0,
-  standard: 0,
-  ev: 0,
-})
 
 const vehicleTypeLabelMap = {
   car: '小型车',
@@ -379,36 +199,6 @@ const totalFee = computed(() => {
   return amount
 })
 
-const selectedTypeAvailableCount = computed(() => {
-  return reserveForm.type === 'ev'
-    ? Number(floorAvailability.value.ev || 0)
-    : Number(floorAvailability.value.standard || 0)
-})
-
-const specificSpotOptions = computed(() => {
-  return floorSpots.value
-    .filter((spot) => {
-      if (!isSpotAvailable(spot)) return false
-      const isEv = Boolean(spot?.type)
-      return reserveForm.type === 'ev' ? isEv : !isEv
-    })
-    .map((spot) => {
-      const displaySpaceId = String(spot?.space_id || '').replace(/^space_/, '')
-      return {
-        id: Number(spot?.id),
-        spaceId: String(spot?.space_id || ''),
-        label: `${displaySpaceId} (${reserveForm.floor})`
-      }
-    })
-    .filter((item) => Number.isFinite(item.id) && item.id > 0)
-})
-
-const selectedSpecificSpot = computed(() => {
-  const selectedId = Number(reserveForm.spotId)
-  if (!Number.isFinite(selectedId) || selectedId <= 0) return null
-  return specificSpotOptions.value.find((item) => item.id === selectedId) || null
-})
-
 const isBalanceEnough = computed(() => userBalance.value >= totalFee.value)
 
 const paymentMethods = computed(() => [
@@ -421,7 +211,7 @@ const paymentMethods = computed(() => [
   },
   { value: 'wechat', label: '微信支付', desc: '推荐', icon: '/微信支付.svg', disabled: false },
   { value: 'alipay', label: '支付宝', desc: '快捷', icon: '/支付宝支付.svg', disabled: false },
-  { value: 'card', label: '银行卡', desc: hasBankCard.value ? '安全' : '请先添加银行卡', icon: '/银行卡.svg', disabled: !hasBankCard.value }
+  { value: 'card', label: '银行卡', desc: '安全', icon: '/银行卡.svg', disabled: false }
 ])
 
 watch(
@@ -463,41 +253,6 @@ function toDateString(d) {
   ].join('-')
 }
 
-function isSpotAvailable(spot) {
-  const isDamaged = Boolean(spot?.is_damaged)
-  const isReserved = Boolean(String(spot?.reserved_plate || '').trim())
-  const hasCurrentPlate = Boolean(String(spot?.current_plate || '').trim())
-  return !isDamaged && !isReserved && !hasCurrentPlate
-}
-
-function applyRoutePrefill() {
-  const queryMode = String(route.query?.reservationMode || '').toLowerCase()
-  if (queryMode === 'specific') {
-    reservationMode.value = 'specific'
-  }
-
-  const queryFloor = String(route.query?.floor || '').toUpperCase()
-  if (queryFloor) {
-    reserveForm.floor = queryFloor
-  }
-
-  const queryType = String(route.query?.spotType || '').toLowerCase()
-  if (queryType === 'standard' || queryType === 'ev') {
-    reserveForm.type = queryType
-  }
-
-  const querySpotId = Number(route.query?.spotId)
-  if (Number.isFinite(querySpotId) && querySpotId > 0) {
-    reserveForm.spotId = querySpotId
-    reservationMode.value = 'specific'
-  }
-
-  const querySpaceId = String(route.query?.spaceId || '').trim()
-  if (querySpaceId) {
-    reserveForm.spotSpaceId = querySpaceId
-  }
-}
-
 async function loadPricingRules() {
   try {
     const res = await getPricingRules()
@@ -507,30 +262,6 @@ async function loadPricingRules() {
     evSurcharge.value = Number(ruleMap.reservation_ev_surcharge?.value || 10.0)
   } catch (err) {
     console.error('加载预约定价规则失败', err)
-  }
-}
-
-async function loadFloorOptions() {
-  try {
-    const res = await getFloorSummary()
-    const rows = Array.isArray(res) ? res : (res?.results || [])
-    if (!rows.length) return
-
-    floorOptions.value = rows.map((item) => {
-      const value = String(item.floor || '').toUpperCase()
-      const labelMap = { B2: 'B2 地下二层', B1: 'B1 地下一层', '1F': '1F 一楼' }
-      return {
-        value,
-        label: labelMap[value] || value
-      }
-    })
-
-    const currentFloor = String(reserveForm.floor || '').toUpperCase()
-    if (!floorOptions.value.some((item) => item.value === currentFloor)) {
-      reserveForm.floor = floorOptions.value[0]?.value || 'B2'
-    }
-  } catch (err) {
-    console.error('加载楼层选项失败', err)
   }
 }
 
@@ -547,70 +278,8 @@ async function loadUserBalance() {
   }
 }
 
-async function loadFloorAvailability() {
-  const floor = String(reserveForm.floor || '').toUpperCase()
-  if (!floor) {
-    floorAvailability.value = { total: 0, standard: 0, ev: 0 }
-    floorSpots.value = []
-    return
-  }
-
-  loadingFloorAvailability.value = true
-  try {
-    const res = await getSpacesByFloor(floor)
-    const rows = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : [])
-    floorSpots.value = rows
-
-    let standard = 0
-    let ev = 0
-
-    rows.forEach((spot) => {
-      const isAvailable = isSpotAvailable(spot)
-      if (!isAvailable) return
-
-      if (spot?.type) {
-        ev += 1
-      } else {
-        standard += 1
-      }
-    })
-
-    floorAvailability.value = {
-      total: standard + ev,
-      standard,
-      ev,
-    }
-
-    if (reservationMode.value === 'specific' && reserveForm.spotId) {
-      const selectedId = Number(reserveForm.spotId)
-      const matched = specificSpotOptions.value.find((item) => item.id === selectedId)
-      if (!matched) {
-        reserveForm.spotId = null
-        if (reserveForm.spotSpaceId) {
-          ElMessage.warning(`指定车位 ${reserveForm.spotSpaceId.replace(/^space_/, '')} 当前不可预约，请重新选择`)
-        }
-        reserveForm.spotSpaceId = ''
-      } else {
-        reserveForm.spotSpaceId = matched.spaceId
-      }
-    }
-  } catch (err) {
-    floorAvailability.value = { total: 0, standard: 0, ev: 0 }
-    floorSpots.value = []
-    console.error('加载楼层可分配余量失败', err)
-  } finally {
-    loadingFloorAvailability.value = false
-  }
-}
-
 onMounted(async () => {
-  hasBankCard.value = hasBoundBankCard()
-  const defaultMethod = getDefaultPaymentMethod('wechat')
-  selectedPaymentMethod.value = (!hasBankCard.value && defaultMethod === 'card') ? 'wechat' : defaultMethod
-  applyRoutePrefill()
   await loadPricingRules()
-  await loadFloorOptions()
-  await loadFloorAvailability()
   await loadUserBalance()
   try {
     const res = await getVehicles()
@@ -633,20 +302,6 @@ async function handleConfirm() {
     return
   }
 
-  if (reservationMode.value === 'specific') {
-    if (!reserveForm.spotId) {
-      ElMessage.warning('请选择一个具体车位后再提交预约')
-      return
-    }
-    if (!selectedSpecificSpot.value) {
-      ElMessage.warning('该车位当前不可预约，请重新选择')
-      return
-    }
-  } else if (selectedTypeAvailableCount.value <= 0) {
-    ElMessage.warning('当前楼层该类型暂无可分配车位，请调整楼层或类型')
-    return
-  }
-
   await loadUserBalance()
   if (!isBalanceEnough.value && selectedPaymentMethod.value === 'balance') {
     selectedPaymentMethod.value = 'wechat'
@@ -655,151 +310,12 @@ async function handleConfirm() {
   showPaymentDialog.value = true
 }
 
-watch(
-  () => reserveForm.floor,
-  () => {
-    loadFloorAvailability()
-  }
-)
-
-watch(
-  () => reserveForm.type,
-  () => {
-    if (reservationMode.value !== 'specific' || !reserveForm.spotId) return
-    const selectedId = Number(reserveForm.spotId)
-    const matched = specificSpotOptions.value.find((item) => item.id === selectedId)
-    if (!matched) {
-      reserveForm.spotId = null
-      reserveForm.spotSpaceId = ''
-    }
-  }
-)
-
-watch(
-  () => reservationMode.value,
-  (mode) => {
-    if (mode === 'random') {
-      reserveForm.spotId = null
-      reserveForm.spotSpaceId = ''
-    }
-  }
-)
-
-watch(
-  () => reserveForm.spotId,
-  (spotId) => {
-    const selectedId = Number(spotId)
-    const matched = specificSpotOptions.value.find((item) => item.id === selectedId)
-    reserveForm.spotSpaceId = matched?.spaceId || ''
-  }
-)
-
 function selectPaymentMethod(method) {
   if (method.disabled) {
-    if (method.value === 'card') {
-      ElMessage.warning('请先添加银行卡并完成验证')
-      openAddBankCardDialog()
-      return
-    }
     ElMessage.warning('余额不足，请先充值后再使用余额支付')
     return
   }
   selectedPaymentMethod.value = method.value
-}
-
-function openAddBankCardDialog() {
-  bankCardForm.value = {
-    phone: '',
-    holder: '',
-    number: '',
-    code: '',
-  }
-  bankCardHumanVerified.value = false
-  resetBankCardPuzzleCaptcha()
-  mockCardVerifyCode.value = ''
-  showAddCardDialog.value = true
-}
-
-function resetBankCardPuzzleCaptcha() {
-  bankCardHumanVerified.value = false
-  bankCardPuzzleValue.value = 0
-  bankCardPuzzleTarget.value = Math.floor(20 + Math.random() * (bankCardPuzzleMax - 40))
-}
-
-function handleBankCardPuzzleSlide() {
-  if (bankCardHumanVerified.value) return
-  const delta = Math.abs(Number(bankCardPuzzleValue.value || 0) - Number(bankCardPuzzleTarget.value || 0))
-  if (delta <= 4) {
-    bankCardHumanVerified.value = true
-    ElMessage.success('人机验证通过')
-  }
-}
-
-function requestBankCardCode() {
-  const phone = String(bankCardForm.value.phone || '').trim()
-  const holder = String(bankCardForm.value.holder || '').trim()
-  const number = String(bankCardForm.value.number || '').replace(/\D/g, '')
-
-  if (!bankCardHumanVerified.value) {
-    ElMessage.warning('请先完成人机验证')
-    return
-  }
-
-  if (!/^1\d{10}$/.test(phone)) {
-    ElMessage.warning('请输入正确的11位手机号')
-    return
-  }
-  if (!holder) {
-    ElMessage.warning('请输入持卡人姓名')
-    return
-  }
-  if (!/^\d{16,19}$/.test(number)) {
-    ElMessage.warning('银行卡号需为16到19位数字')
-    return
-  }
-
-  mockCardVerifyCode.value = String(Math.floor(100000 + Math.random() * 900000))
-  ElMessage.success(`验证码已发送（模拟）：${mockCardVerifyCode.value}`)
-}
-
-function confirmAddBankCard() {
-  const phone = String(bankCardForm.value.phone || '').trim()
-  const holder = String(bankCardForm.value.holder || '').trim()
-  const number = String(bankCardForm.value.number || '').replace(/\D/g, '')
-  const code = String(bankCardForm.value.code || '').trim()
-
-  if (!/^1\d{10}$/.test(phone)) {
-    ElMessage.warning('请输入正确的11位手机号')
-    return
-  }
-  if (!bankCardHumanVerified.value) {
-    ElMessage.warning('请先完成人机验证')
-    return
-  }
-  if (!holder) {
-    ElMessage.warning('请输入持卡人姓名')
-    return
-  }
-  if (!/^\d{16,19}$/.test(number)) {
-    ElMessage.warning('银行卡号需为16到19位数字')
-    return
-  }
-  if (!mockCardVerifyCode.value) {
-    ElMessage.warning('请先获取验证码')
-    return
-  }
-  if (code !== mockCardVerifyCode.value) {
-    ElMessage.error('验证码错误，请重新输入')
-    return
-  }
-
-  setBankCardBound(true)
-  hasBankCard.value = true
-  selectedPaymentMethod.value = 'card'
-  bankCardForm.value = { phone: '', holder: '', number: '', code: '' }
-  resetBankCardPuzzleCaptcha()
-  showAddCardDialog.value = false
-  ElMessage.success('银行卡已添加并验证成功')
 }
 
 async function submitReservation() {
@@ -807,47 +323,37 @@ async function submitReservation() {
   let balancePaid = false
   let balanceTxnId = ''
   try {
+    const spotRes = await getSpots({ status: 'free', spot_type: reserveForm.type })
+    const spots = spotRes.results || spotRes
+    if (spots.length === 0) {
+      ElMessage.error('抱歉，当前类别车位已被预约满，请更换类型！')
+      return
+    }
+
     if (selectedPaymentMethod.value === 'balance') {
       const payRes = await payWithBalance(totalFee.value, null, '预约车位费用')
       balancePaid = true
       balanceTxnId = String(payRes?.transaction_id || payRes?.data?.transaction_id || '')
     }
 
-    const reservation = await createReservation({
-      vehicle: reserveForm.vehicle,
+    await createReservation({
+      spot: spots[0].id,
       date: toDateString(new Date(reserveForm.date)),
       end_date: toDateString(new Date(reserveForm.endDate)),
       start_time: reserveForm.startTime,
       end_time: reserveForm.endTime,
-      spot: reservationMode.value === 'specific' ? Number(reserveForm.spotId) : undefined,
-      preferred_floor: reserveForm.floor,
-      spot_type: reserveForm.type,
-      payment_transaction_id: balanceTxnId,
       total_amount: totalFee.value,
       payment_method: selectedPaymentMethod.value
     })
 
-    const floor = reservation?.spot_detail?.floor || reservation?.spot_floor || ''
-    const spotId = reservation?.spot_detail?.spot_id || reservation?.spot_id || ''
-    if (floor && spotId) {
-      ElMessage.success(`预约成功，已分配车位：${floor}-${spotId}`)
-    } else {
-      ElMessage.success('预约成功，请准时入场！')
-    }
+    ElMessage.success('预约成功，请准时入场！')
     showPaymentDialog.value = false
     await loadUserBalance()
     router.push('/profile')
   } catch (err) {
-    const responseData = err?.response?.data || {}
-    const spotErrorRaw = responseData?.spot
-    const spotError = Array.isArray(spotErrorRaw) ? String(spotErrorRaw[0] || '') : String(spotErrorRaw || '')
-    const detail = String(responseData?.detail || '')
+    const detail = String(err?.response?.data?.detail || '')
     if (selectedPaymentMethod.value === 'balance' && detail.includes('余额不足')) {
       ElMessage.error('余额不足，请先充值后再支付')
-    } else if (spotError) {
-      ElMessage.error(spotError)
-    } else if (detail.includes('暂无可用车位')) {
-      ElMessage.error(detail)
     } else if (selectedPaymentMethod.value === 'balance' && balancePaid) {
       try {
         if (balanceTxnId) {
@@ -873,13 +379,6 @@ async function submitReservation() {
 function handlePaymentConfirm() {
   if (!selectedPaymentMethod.value) {
     ElMessage.warning('请选择支付方式')
-    return
-  }
-
-  hasBankCard.value = hasBoundBankCard()
-  if (selectedPaymentMethod.value === 'card' && !hasBankCard.value) {
-    ElMessage.warning('请先前往支付中心添加银行卡')
-    router.push('/payment')
     return
   }
 

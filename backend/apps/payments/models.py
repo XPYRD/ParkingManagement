@@ -237,6 +237,33 @@ class PricingRule(models.Model):
         return rule.value
 
 
+class BankCard(models.Model):
+    """用户银行卡 — 用于支付方式选择。"""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='bank_cards', verbose_name='用户'
+    )
+    bank_name = models.CharField('银行名称', max_length=50)
+    card_type = models.CharField('卡类型', max_length=20, blank=True, default='')
+    holder_name = models.CharField('持卡人姓名', max_length=50)
+    card_last4 = models.CharField('卡号后4位', max_length=4)
+    bin_prefix = models.CharField('BIN前缀', max_length=8, blank=True, default='')
+    is_default = models.BooleanField('是否默认卡', default=True)
+    is_active = models.BooleanField('是否有效', default=True)
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        verbose_name = '银行卡'
+        verbose_name_plural = '银行卡'
+        db_table = 'sentinel_bank_card'
+        ordering = ['-is_default', '-updated_at', '-id']
+
+    def __str__(self) -> str:
+        return f'{self.holder_name} — {self.bank_name} (*{self.card_last4})'
+
+
 class UserBalance(models.Model):
     """
     用户余额管理 — 支持充值、扣费、查询

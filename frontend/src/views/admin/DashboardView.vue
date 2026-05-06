@@ -103,8 +103,9 @@
       </div>
     </section>
 
-    <!-- ===== 系统运行 ===== -->
-    <section class="grid grid-cols-1 gap-6">
+    <!-- ===== 系统运行 + 最近交易 ===== -->
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- 系统运行状况 -->
       <div class="rounded-2xl p-6 bg-surface-container-lowest border border-outline-variant/10 shadow-sm">
         <h3 class="font-bold text-on-surface mb-4">系统运行状况</h3>
         <div class="space-y-4">
@@ -122,6 +123,25 @@
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- 最近交易 -->
+      <div class="rounded-2xl p-6 bg-surface-container-lowest border border-outline-variant/10 shadow-sm">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="font-bold text-on-surface">最近交易</h3>
+          <span class="text-[10px] text-secondary">实时</span>
+        </div>
+        <div class="space-y-3 max-h-64 overflow-y-auto">
+          <div v-for="(tx, i) in recentPayments" :key="i"
+               class="flex items-center justify-between text-sm py-2 border-b border-outline-variant/10 last:border-0">
+            <div class="flex-1 min-w-0">
+              <p class="text-xs text-on-surface font-semibold truncate">{{ tx.transaction_id }}</p>
+              <p class="text-[10px] text-secondary">{{ formatTime(tx.created_at) }}</p>
+            </div>
+            <span class="text-sm font-bold text-primary">¥{{ tx.amount }}</span>
+          </div>
+          <div v-if="recentPayments.length === 0" class="text-center text-xs text-secondary py-8">暂无交易记录</div>
         </div>
       </div>
     </section>
@@ -147,19 +167,26 @@ const summaryCards = ref([
   { icon: 'build', label: '设备在线', value: '--/--', trend: 0, bgClass: 'bg-amber-50', iconClass: 'text-amber-600' },
 ])
 
-const revenueData = ref([
-  { label: '周一', value: 12500 },
-  { label: '周二', value: 14200 },
-  { label: '周三', value: 13800 },
-  { label: '周四', value: 15600 },
-  { label: '周五', value: 16800 },
-  { label: '周六', value: 19200 },
-  { label: '周日', value: 0 },
-])
-const maxRevenue = ref(20000)
+const revenueData = ref([])
+const maxRevenue = ref(1)
 
 const occupancyRate = ref(0)
 const occupancyBreakdown = ref([])
+
+const hourlyTraffic = ref([])
+const maxHourlyTraffic = ref(1)
+const recentPayments = ref([])
+
+function formatTime(isoStr) {
+  if (!isoStr) return ''
+  const d = new Date(isoStr)
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const hours = String(d.getHours()).padStart(2, '0')
+  const mins = String(d.getMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day} ${hours}:${mins}`
+}
 
 const systemStatus = ref([
   { icon: 'dns', label: '服务器负载', value: '23%' },
@@ -186,14 +213,31 @@ async function loadData() {
        { label: '已预约', count: data.occupancy.reserved, dotClass: 'bg-amber-500' },
        { label: '维修中', count: data.occupancy.maintenance, dotClass: 'bg-error' },
     ]
-    
-    // 更新系统正常运行时间
-    systemStatus.value[3].value = `${(data.system_health.avg_uptime || 0).toFixed(1)}%`
-    
-    // 借机把系统今日假想营收赋给最右侧一根柱子
-    revenueData.value[6].value = data.daily_revenue
-    maxRevenue.value = Math.max(...revenueData.value.map(d => d.value)) || 1
-    
+
+    // 更新系统正常运行时间 — 使用真实 API 数据
+    const sh = data.system_health || {}
+    systemStatus.value[0].value = `${sh.server_load || 0}%`
+    systemStatus.value[1].value = `${sh.network_latency || 0}%`
+    systemStatus.value[2].value = `${sh.storage_usage || 0}%`
+    systemStatus.value[3].value = `${(sh.avg_uptime || 0).toFixed(1)}%`
+
+    // 营收趋势 — 使用真实近7天数据
+    if (data.revenue_trend && data.revenue_trend.length > 0) {
+      revenueData.value = data.revenue_trend
+    } else {
+      // 兜底：如果后端未返回趋势数据，仅展示今日营收
+      revenueData.value = [{ label: '今日', value: data.daily_revenue || 0 }]
+    }
+    maxRevenue.value = Math.max(...revenueData.value.map(d => d.value), 1)
+
+    // 分时流量 - 仅显示 6:00~22:00 活跃时段
+    const rawTraffic = data.hourly_traffic || []
+    hourlyTraffic.value = rawTraffic.filter(h => h.hour >= 6 && h.hour <= 22)
+    maxHourlyTraffic.value = Math.max(...hourlyTraffic.value.map(h => h.count), 1)
+
+    // 最近交易
+    recentPayments.value = data.recent_payments || []
+
   } catch (err) {
     ElMessage.error('无法加载仪表盘数据')
   }

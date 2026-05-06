@@ -74,12 +74,10 @@
                 </template>
               </el-input>
               <div
-                class="w-28 h-10 rounded-lg bg-surface-container-high flex items-center justify-center cursor-pointer select-none"
+                class="w-36 h-12 rounded-lg bg-surface-container-high cursor-pointer select-none overflow-hidden"
                 @click="refreshCaptcha"
               >
-                <span class="text-xl font-black tracking-[0.3em] text-primary" style="font-family: monospace;">
-                  {{ captchaCode }}
-                </span>
+                <canvas ref="captchaCanvas" width="144" height="48" class="w-full h-full"></canvas>
               </div>
             </div>
           </el-form-item>
@@ -166,6 +164,7 @@ const authStore = useAuthStore()
 
 const formRef = ref(null)
 const loading = ref(false)
+const captchaCanvas = ref(null)
 const captchaCode = ref('A3X7')
 
 const form = reactive({
@@ -180,10 +179,55 @@ const rules = {
   captcha: [{ required: true, message: '请输入验证码', trigger: 'blur' }],
 }
 
-/** 生成随机验证码 */
+/** 生成随机验证码并绘制到 Canvas */
 function refreshCaptcha() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
   captchaCode.value = Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
+
+  const canvas = captchaCanvas.value
+  if (!canvas) return
+  const ctx = canvas.getContext('2d')
+  const w = canvas.width
+  const h = canvas.height
+
+  // 背景
+  ctx.fillStyle = '#f0f2f5'
+  ctx.fillRect(0, 0, w, h)
+
+  // 噪点
+  for (let i = 0; i < 60; i++) {
+    ctx.fillStyle = `hsl(${Math.random() * 360}, 50%, 60%)`
+    ctx.beginPath()
+    ctx.arc(Math.random() * w, Math.random() * h, Math.random() * 3 + 1, 0, Math.PI * 2)
+    ctx.fill()
+  }
+
+  // 干扰线
+  for (let i = 0; i < 4; i++) {
+    ctx.strokeStyle = `hsla(${Math.random() * 360}, 60%, 50%, 0.4)`
+    ctx.lineWidth = Math.random() * 1.5 + 0.5
+    ctx.beginPath()
+    ctx.moveTo(Math.random() * w, Math.random() * h)
+    ctx.lineTo(Math.random() * w, Math.random() * h)
+    ctx.stroke()
+  }
+
+  // 字符
+  for (let i = 0; i < captchaCode.value.length; i++) {
+    const ch = captchaCode.value[i]
+    const x = 16 + i * 24 + Math.random() * 6
+    const y = 30 + Math.random() * 10
+    const rotation = (Math.random() - 0.5) * 0.6
+    const fontSize = 20 + Math.random() * 8
+    ctx.font = `bold ${fontSize}px "Courier New", monospace`
+    ctx.fillStyle = `hsl(${Math.random() * 360}, 65%, 35%)`
+    ctx.textBaseline = 'middle'
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.rotate(rotation)
+    ctx.fillText(ch, 0, 0)
+    ctx.restore()
+  }
 }
 
 onMounted(refreshCaptcha)
@@ -196,8 +240,8 @@ async function handleLogin() {
   if (!formRef.value) return
   try { await formRef.value.validate() } catch { return }
 
-  // 校验验证码（前端简单校验）
-  if (form.captcha.toUpperCase() !== captchaCode.value) {
+  // 校验验证码（不区分大小写）
+  if (form.captcha.toUpperCase() !== captchaCode.value.toUpperCase()) {
     ElMessage.error('验证码错误')
     refreshCaptcha()
     return
