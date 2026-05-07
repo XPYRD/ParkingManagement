@@ -53,62 +53,49 @@
             </div>
           </div>
 
-          <!-- 底部控制栏 (重构版: 极简且清晰) -->
-          <div class="p-4 bg-surface-container/50 backdrop-blur-md flex flex-col md:flex-row justify-between items-center gap-6 border-t border-outline-variant/10">
-            <!-- 场景选择 -->
-            <div class="flex gap-2 p-1.5 bg-surface-container-high rounded-2xl border border-outline-variant/10">
-               <el-radio-group v-model="scene" size="large" class="!flex !gap-1">
-                <el-radio-button label="entry" class="custom-tab">入口登记</el-radio-button>
-                <el-radio-button label="exit" class="custom-tab">离场结算</el-radio-button>
-                <el-radio-button label="monitoring" class="custom-tab">车位同步</el-radio-button>
-              </el-radio-group>
+          <!-- 底部控制栏 -->
+          <div class="p-4 bg-surface-container/50 backdrop-blur-md flex flex-col md:flex-row justify-end items-center gap-4 border-t border-outline-variant/10">
+            <!-- 模式切换 -->
+            <div class="flex items-center gap-2">
+              <button
+                @click="isBatchMode = false"
+                :class="['px-8 py-3 rounded-2xl text-sm font-black transition-all duration-300 flex items-center gap-2', !isBatchMode ? 'bg-primary text-white shadow-lg shadow-primary/30' : 'bg-surface-container text-on-surface hover:bg-surface-container-high border border-outline-variant/20']"
+              >
+                <span class="material-symbols-outlined text-lg">image</span>
+                单图模式
+              </button>
+              <button
+                @click="isBatchMode = true"
+                :class="['px-8 py-3 rounded-2xl text-sm font-black transition-all duration-300 flex items-center gap-2', isBatchMode ? 'bg-primary text-white shadow-lg shadow-primary/30' : 'bg-surface-container text-on-surface hover:bg-surface-container-high border border-outline-variant/20']"
+              >
+                <span class="material-symbols-outlined text-lg">filter_none</span>
+                批量模式
+              </button>
             </div>
 
-            <div class="flex items-center gap-4 w-full md:w-auto">
-              <!-- 精美的分段切换器 (代替看不清的 Switch) -->
-              <div class="flex items-center p-1 bg-surface-container-lowest rounded-2xl border border-outline-variant/10 shadow-inner">
-                <button 
-                  @click="isBatchMode = false"
-                  :class="['px-6 py-2 rounded-xl text-sm font-black transition-all duration-300 flex items-center gap-2', !isBatchMode ? 'bg-primary text-white shadow-lg shadow-primary/30' : 'text-secondary-fixed hover:bg-surface-container']"
-                >
-                  <span class="material-symbols-outlined text-sm">image</span>
-                  单图模式
-                </button>
-                <button 
-                  @click="isBatchMode = true"
-                  :class="['px-6 py-2 rounded-xl text-sm font-black transition-all duration-300 flex items-center gap-2', isBatchMode ? 'bg-primary text-white shadow-lg shadow-primary/30' : 'text-secondary-fixed hover:bg-surface-container']"
-                >
-                  <span class="material-symbols-outlined text-sm">filter_none</span>
-                  批量模式
-                </button>
-              </div>
-
-              <!-- 主执行按钮 -->
-              <div class="flex-1 md:flex-none">
-                <el-button 
-                  v-if="isBatchMode" 
-                  type="success" 
-                  size="large"
-                  :loading="isProcessing" 
-                  :disabled="batchFiles.length === 0" 
-                  @click="startBatchRecognition" 
-                  class="!rounded-2xl !px-8 !font-black !h-[48px] !border-none bg-gradient-to-r from-green-600 to-emerald-500 shadow-xl shadow-green-500/20 hover:scale-105 active:scale-95 !transition-all"
-                >
-                  开启批量引擎
-                </el-button>
-                <el-button 
-                  v-else 
-                  type="primary" 
-                  size="large"
-                  :loading="isProcessing" 
-                  :disabled="!selectedFile" 
-                  @click="startRecognition" 
-                  class="!rounded-2xl !px-10 !font-black !h-[48px] !border-none bg-gradient-to-r from-primary to-blue-400 shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 !transition-all"
-                >
-                  开始语义分析
-                </el-button>
-              </div>
-            </div>
+            <!-- 主执行按钮 -->
+            <el-button
+              v-if="isBatchMode"
+              type="success"
+              size="large"
+              :loading="isProcessing"
+              :disabled="batchFiles.length === 0"
+              @click="startBatchRecognition"
+              class="!rounded-2xl !px-8 !font-black !h-[48px] !border-none bg-gradient-to-r from-green-600 to-emerald-500 shadow-xl shadow-green-500/20 hover:scale-105 active:scale-95 !transition-all"
+            >
+              开启批量引擎
+            </el-button>
+            <el-button
+              v-else
+              type="primary"
+              size="large"
+              :loading="isProcessing"
+              :disabled="!selectedFile"
+              @click="startRecognition"
+              class="!rounded-2xl !px-10 !font-black !h-[48px] !border-none bg-gradient-to-r from-primary to-blue-400 shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 !transition-all"
+            >
+              开始语义分析
+            </el-button>
           </div>
         </div>
 
@@ -216,7 +203,6 @@ import { ref, onMounted } from 'vue'
 import request from '@/api/request'
 import { ElMessage } from 'element-plus'
 
-const scene = ref('entry')
 const isProcessing = ref(false)
 const selectedFile = ref(null)
 const previewUrl = ref('')
@@ -282,7 +268,6 @@ const startRecognition = async () => {
   
   const formData = new FormData()
   formData.append('image', selectedFile.value)
-  formData.append('scene', scene.value)
 
   try {
     const res = await request.post('/ai/recognize/', formData, {
@@ -296,7 +281,7 @@ const startRecognition = async () => {
 
       logs.value.unshift({
         time: new Date().toLocaleTimeString(),
-        action: scene.value === 'entry' ? '入场自动核销' : (scene.value === 'exit' ? '离场账单结算' : '车位状态映射'),
+        action: '车牌识别完成',
         detail: res.action_taken || '识别成功，系统已自动响应'
       })
 
@@ -324,7 +309,6 @@ const startBatchRecognition = async () => {
   batchFiles.value.forEach(file => {
     formData.append('images', file)
   })
-  formData.append('scene', scene.value)
 
   try {
     const res = await request.post('/ai/recognize/batch-recognize/', formData, {

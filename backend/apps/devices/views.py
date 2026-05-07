@@ -90,13 +90,23 @@ class DeviceViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='restart')
     def restart(self, request, pk=None):
         """
-        重启设备
+        重启/恢复设备
 
         POST /api/v1/devices/list/{id}/restart/
-        body: { type: "soft" | "hard" }
+        body: { type: "soft" | "hard" | "recover" }
         """
         device = self.get_object()
         restart_type = request.data.get('type', 'soft')
+
+        if restart_type == 'recover':
+            # 恢复设备到在线状态
+            device.status = Device.Status.ONLINE
+            device.fault_detail = ''
+            device.offline_since = None
+            device.save(update_fields=['status', 'fault_detail', 'offline_since', 'updated_at'])
+            serializer = DeviceSerializer(device)
+            return Response(serializer.data)
+
         if restart_type == 'hard':
             device.status = Device.Status.OFFLINE
             device.offline_since = timezone.now()

@@ -539,10 +539,6 @@ async function loadSpots() {
         y: s.y,
       }))
 
-    if (!selectedStartId.value && publicLocations.value.length > 0) {
-      selectedStartId.value = publicLocations.value[0].id
-    }
-    
     console.log('Detected start nodes:', publicLocations.value)
     
     // 数据转换（确保必要字段存在）

@@ -21,9 +21,9 @@ export function getDeviceOverview() {
   return request.get('/devices/list/overview/')
 }
 
-/** 更新设备 */
+/** 更新设备（部分更新） */
 export function updateDevice(id, data) {
-  return request.put(`/devices/list/${id}/`, data)
+  return request.patch(`/devices/list/${id}/`, data)
 }
 
 /** 报告设备故障 */

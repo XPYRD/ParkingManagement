@@ -540,17 +540,16 @@ class ParkingSessionViewSet(viewsets.ModelViewSet):
         now = timezone.now()
         duration = now - effective_entry
         total_minutes = int(duration.total_seconds() / 60)
-        hours = total_minutes // 60
-        mins = total_minutes % 60
-        chargeable_hours = max(1, hours + (1 if mins > 0 else 0))
 
         if has_active_sub:
             amount = Decimal('0')
+            hours = total_minutes // 60
+            mins = total_minutes % 60
+            chargeable_hours = max(1, hours + (1 if mins > 0 else 0))
         else:
-            hourly_rate = PricingRule.get_active_value(
-                PricingRule.RateType.HOURLY_STANDARD, Decimal('6.00')
-            ) or Decimal('6.00')
-            amount = hourly_rate * chargeable_hours
+            amount, chargeable_hours = PricingRule.calculate_parking_fee(total_minutes)
+            hours = total_minutes // 60
+            mins = total_minutes % 60
 
         # 5. 检查待出场状态（缴费后30分钟内）
         payment_state = session.payment_status if session else ParkingSession.PaymentStatus.PENDING

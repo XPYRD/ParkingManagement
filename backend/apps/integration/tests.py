@@ -35,12 +35,7 @@ class VehicleLifecycleIntegrationTest(APITestCase):
         self.spot = ParkingSpace.objects.create(
             space_id='space_LC01', floor='1F', center_x=100, center_y=100, x=90, y=90)
 
-        # Ensure hourly rate exists
-        PricingRule.objects.filter(
-            rate_type=PricingRule.RateType.HOURLY_STANDARD).delete()
-        PricingRule.objects.create(
-            rate_type=PricingRule.RateType.HOURLY_STANDARD,
-            value=Decimal('6.00'), unit='元/小时', effective_date=timezone.now().date())
+        self._setup_pricing_rules()
 
         # Active subscription so vehicle can exit for free
         Subscription.objects.create(
@@ -51,6 +46,22 @@ class VehicleLifecycleIntegrationTest(APITestCase):
             end_date=timezone.localdate() + timezone.timedelta(days=10),
             is_active=True,
         )
+
+    def _setup_pricing_rules(self):
+        """Create default pricing rules for fee calculation."""
+        today = timezone.now().date()
+        rules = [
+            ('hourly_first', Decimal('6.00'), '元/小时'),
+            ('hourly_subsequent', Decimal('4.00'), '元/小时'),
+            ('hourly_switch_hour', Decimal('5'), '小时'),
+            ('daily_rate', Decimal('30.00'), '元/天'),
+            ('daily_cap', Decimal('60.00'), '元/天'),
+        ]
+        for rate_type, value, unit in rules:
+            PricingRule.objects.update_or_create(
+                rate_type=rate_type,
+                defaults={'value': value, 'unit': unit, 'effective_date': today, 'is_active': True},
+            )
 
     def _entry(self, plate='LCY00001'):
         """Simulate vehicle entry via webhook."""
@@ -201,12 +212,7 @@ class SubscriptionPrivilegeBoundaryTest(APITestCase):
         self.spot = ParkingSpace.objects.create(
             space_id='space_SUB01', floor='1F', center_x=100, center_y=100, x=90, y=90)
 
-        # Hourly rate
-        PricingRule.objects.filter(
-            rate_type=PricingRule.RateType.HOURLY_STANDARD).delete()
-        PricingRule.objects.create(
-            rate_type=PricingRule.RateType.HOURLY_STANDARD,
-            value=Decimal('6.00'), unit='元/小时', effective_date=timezone.now().date())
+        self._setup_pricing_rules()
 
         # Active subscription for sub_user only
         plan = SubscriptionPlan.objects.filter(code='monthly').first()
@@ -218,6 +224,21 @@ class SubscriptionPrivilegeBoundaryTest(APITestCase):
             end_date=timezone.localdate() + timezone.timedelta(days=10),
             is_active=True,
         )
+
+    def _setup_pricing_rules(self):
+        today = timezone.now().date()
+        rules = [
+            ('hourly_first', Decimal('6.00'), '元/小时'),
+            ('hourly_subsequent', Decimal('4.00'), '元/小时'),
+            ('hourly_switch_hour', Decimal('5'), '小时'),
+            ('daily_rate', Decimal('30.00'), '元/天'),
+            ('daily_cap', Decimal('60.00'), '元/天'),
+        ]
+        for rate_type, value, unit in rules:
+            PricingRule.objects.update_or_create(
+                rate_type=rate_type,
+                defaults={'value': value, 'unit': unit, 'effective_date': today, 'is_active': True},
+            )
 
     def _entry(self, vehicle):
         url = reverse('parking:hardware-handle-webhook')

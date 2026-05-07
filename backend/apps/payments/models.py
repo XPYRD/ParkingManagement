@@ -201,6 +201,11 @@ class PricingRule(models.Model):
     class RateType(models.TextChoices):
         HOURLY_STANDARD = 'hourly_standard', '标准时段（元/小时）'
         HOURLY_PEAK = 'hourly_peak', '高峰时段（元/小时）'
+        HOURLY_FIRST = 'hourly_first', '首小时费率（元/小时）'
+        HOURLY_SUBSEQUENT = 'hourly_subsequent', '后续每小时（元/小时）'
+        HOURLY_SWITCH_HOUR = 'hourly_switch_hour', '切换日租起始小时数'
+        DAILY_RATE = 'daily_rate', '日租价（元/天）'
+        DAILY_CAP = 'daily_cap', '单日封顶（元/天）'
         RESERVATION_DAILY = 'reservation_daily', '预约基础费（元/天）'
         RESERVATION_EV_SURCHARGE = 'reservation_ev_surcharge', '预约充电桩附加费（元/单）'
         GRACE_ENTRY = 'grace_entry', '入场宽限期（分钟）'
@@ -246,6 +251,62 @@ class PricingRule(models.Model):
         if rule is None:
             return default
         return rule.value
+
+    @classmethod
+    def calculate_parking_fee(cls, total_minutes: int) -> tuple:
+        """
+        计算停车费
+
+        计费逻辑：
+        1. 不足1小时按1小时计（至少收首小时费）
+        2. 首小时：按 HOURLY_FIRST（默认 ¥6）
+        3. 后续每小时：按 HOURLY_SUBSEQUENT（默认 ¥4），直到达到 HOURLY_SWITCH_HOUR（默认 5 小时）
+        4. 超过切换小时后：按 DAILY_RATE（默认 ¥30/天）计费
+        5. 每日不超过 DAILY_CAP（默认 ¥60）
+
+        返回: (amount, chargeable_hours)
+        """
+        from decimal import Decimal, ROUND_HALF_UP
+
+        # 至少1小时
+        if total_minutes <= 0:
+            total_minutes = 1
+
+        hourly_first = cls.get_active_value(cls.RateType.HOURLY_FIRST, Decimal('6.00'))
+        hourly_subsequent = cls.get_active_value(cls.RateType.HOURLY_SUBSEQUENT, Decimal('4.00'))
+        switch_hour = cls.get_active_value(cls.RateType.HOURLY_SWITCH_HOUR, Decimal('5'))
+        daily_rate = cls.get_active_value(cls.RateType.DAILY_RATE, Decimal('30.00'))
+        daily_cap = cls.get_active_value(cls.RateType.DAILY_CAP, Decimal('60.00'))
+
+        switch_hour = int(switch_hour)
+        total_full_days = total_minutes // (24 * 60)
+        remaining_minutes = total_minutes % (24 * 60)
+
+        amount = Decimal('0')
+
+        if total_full_days > 0:
+            amount += total_full_days * min(daily_rate, daily_cap)
+
+        # 计算剩余不足一天的部分
+        if remaining_minutes > 0:
+            remaining_hours = remaining_minutes // 60
+            remaining_mins = remaining_minutes % 60
+            chargeable_remaining = remaining_hours + (1 if remaining_mins > 0 else 0)
+
+            if chargeable_remaining <= 1:
+                amount += hourly_first * chargeable_remaining
+            elif chargeable_remaining <= switch_hour:
+                amount += hourly_first + hourly_subsequent * (chargeable_remaining - 1)
+            else:
+                # 剩余部分超过切换小时，按日租算
+                amount += min(daily_rate, daily_cap)
+
+        amount = amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+        # 计费小时数
+        chargeable_hours = max(1, total_minutes // 60 + (1 if total_minutes % 60 > 0 else 0))
+
+        return amount, chargeable_hours
 
 
 class BankCard(models.Model):

@@ -296,9 +296,25 @@
           </div>
 
           <!-- 图片上传识别 -->
-          <div v-if="entryPlateSourceMode === 'image'" class="animate-[fadeIn_0.2s_ease-out]">
-            <label class="block text-[11px] text-slate-500 font-mono tracking-[0.12em] uppercase mb-2">图片识别</label>
-            <div class="flex flex-wrap items-center gap-3">
+          <div v-if="entryPlateSourceMode === 'image'" class="animate-[fadeIn_0.2s_ease-out] space-y-4">
+            <!-- 单图/批量模式切换 -->
+            <div class="flex items-center gap-2">
+              <button
+                @click="entryBatchMode = false"
+                :class="['px-4 py-1.5 rounded-lg text-xs font-bold transition-all', !entryBatchMode ? 'bg-amber-500/20 text-amber-300' : 'text-slate-500 hover:text-slate-300 bg-slate-800/50']"
+              >
+                单图识别
+              </button>
+              <button
+                @click="entryBatchMode = true"
+                :class="['px-4 py-1.5 rounded-lg text-xs font-bold transition-all', entryBatchMode ? 'bg-amber-500/20 text-amber-300' : 'text-slate-500 hover:text-slate-300 bg-slate-800/50']"
+              >
+                批量识别
+              </button>
+            </div>
+
+            <!-- 单图模式 -->
+            <div v-if="!entryBatchMode" class="flex flex-wrap items-center gap-3">
               <label class="sim-file-btn">
                 <span class="material-symbols-outlined text-sm mr-1">folder_open</span>
                 选择图片
@@ -309,6 +325,29 @@
                 {{ entryRecognitionLoading ? '识别中...' : '识别车牌' }}
               </button>
               <span v-if="entryImageName" class="text-[11px] text-slate-400 font-mono truncate max-w-[160px]">{{ entryImageName }}</span>
+            </div>
+
+            <!-- 批量模式 -->
+            <div v-else>
+              <div class="flex flex-wrap items-center gap-3 mb-3">
+                <label class="sim-file-btn">
+                  <span class="material-symbols-outlined text-sm mr-1">folder_open</span>
+                  选择多张图片
+                  <input type="file" accept="image/*" class="hidden" multiple @change="handleBatchImageChange" />
+                </label>
+                <button class="sim-action-btn" :disabled="entryBatchImages.length === 0" :class="{ 'sim-loading': entryRecognitionLoading }" @click="recognizeBatchPlates">
+                  <span class="material-symbols-outlined text-sm mr-1">smart_toy</span>
+                  {{ entryRecognitionLoading ? '批量识别中...' : `批量识别 (${entryBatchImages.length})` }}
+                </button>
+                <button v-if="entryBatchImages.length > 0" class="text-xs text-slate-500 hover:text-slate-300" @click="entryBatchImages = []; entryBatchResults = []">清空</button>
+              </div>
+              <!-- 识别结果列表 -->
+              <div v-if="entryBatchResults.length > 0" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-48 overflow-y-auto">
+                <div v-for="(res, idx) in entryBatchResults" :key="idx" class="flex items-center gap-2 p-2 rounded-lg bg-slate-800/50 border border-slate-700/30">
+                  <input type="checkbox" :checked="entryBatchSelected.includes(idx)" @change="toggleBatchSelect(idx)" class="accent-amber-500" />
+                  <span class="text-xs font-mono text-slate-300 font-bold flex-1 truncate">{{ res.plate || '未识别' }}</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -342,21 +381,41 @@
           </div>
 
           <!-- 执行按钮 -->
-          <div class="flex items-end gap-4">
-            <button
-              class="sim-launch-btn"
-              :class="{ 'sim-launch-loading': markEntryLoading }"
-              :disabled="markEntryLoading"
-              @click="simulateVehicleEntry"
-            >
-              <span class="sim-launch-ring"></span>
-              <span class="relative z-10 inline-flex items-center gap-2 text-sm font-extrabold tracking-wider">
-                <span v-if="!markEntryLoading" class="text-lg">▶</span>
-                <span v-else class="sim-spinner"></span>
-                {{ markEntryLoading ? '分配车位中...' : '执行进场' }}
-              </span>
-            </button>
-            <span class="text-[10px] text-slate-600 font-mono tracking-wider pb-1">系统将自动分配可用车位</span>
+          <div class="flex items-end gap-4 flex-wrap">
+            <!-- 单图模式: 单辆车进场 -->
+            <template v-if="!entryBatchMode">
+              <button
+                class="sim-launch-btn"
+                :class="{ 'sim-launch-loading': markEntryLoading }"
+                :disabled="markEntryLoading"
+                @click="simulateVehicleEntry"
+              >
+                <span class="sim-launch-ring"></span>
+                <span class="relative z-10 inline-flex items-center gap-2 text-sm font-extrabold tracking-wider">
+                  <span v-if="!markEntryLoading" class="text-lg">▶</span>
+                  <span v-else class="sim-spinner"></span>
+                  {{ markEntryLoading ? '分配车位中...' : '执行进场' }}
+                </span>
+              </button>
+              <span class="text-[10px] text-slate-600 font-mono tracking-wider pb-1">系统将自动分配可用车位</span>
+            </template>
+            <!-- 批量模式: 批量进场 -->
+            <template v-else>
+              <button
+                class="sim-launch-btn !bg-gradient-to-r !from-green-600 !to-emerald-500"
+                :class="{ 'sim-launch-loading': batchEntryLoading }"
+                :disabled="batchEntryLoading || entryBatchSelected.length === 0"
+                @click="simulateBatchVehicleEntry"
+              >
+                <span class="sim-launch-ring"></span>
+                <span class="relative z-10 inline-flex items-center gap-2 text-sm font-extrabold tracking-wider">
+                  <span v-if="!batchEntryLoading" class="text-lg">▶▶</span>
+                  <span v-else class="sim-spinner"></span>
+                  {{ batchEntryLoading ? `进场中 (${batchEntryDone}/${entryBatchSelected.length})...` : `批量进场 (${entryBatchSelected.length})` }}
+                </span>
+              </button>
+              <span class="text-[10px] text-slate-600 font-mono tracking-wider pb-1">为每辆车自动分配可用车位</span>
+            </template>
           </div>
         </div>
 
@@ -595,6 +654,13 @@ const entrySimulationFloor = ref('B2')
 const entryImageFile = ref(null)
 const entryImageName = ref('')
 const entryRecognitionLoading = ref(false)
+// 批量识别
+const entryBatchMode = ref(false)
+const entryBatchImages = ref([])
+const entryBatchResults = ref([])
+const entryBatchSelected = ref([])
+const batchEntryLoading = ref(false)
+const batchEntryDone = ref(0)
 const quickPayForm = ref({
   plate_number: '',
   energy_type: 'ice',
@@ -846,6 +912,138 @@ async function recognizeEntryPlateFromImage() {
     ElMessage.error('图片识别失败，请稍后重试')
   } finally {
     entryRecognitionLoading.value = false
+  }
+}
+
+function handleBatchImageChange(event) {
+  const files = Array.from(event.target.files).filter(f => f.type.startsWith('image/'))
+  if (files.length === 0) {
+    ElMessage.warning('请选择图片文件')
+    return
+  }
+  entryBatchImages.value = files
+  entryBatchResults.value = []
+  entryBatchSelected.value = []
+  ElMessage.success(`已选择 ${files.length} 张图片`)
+}
+
+async function recognizeBatchPlates() {
+  if (entryBatchImages.value.length === 0) {
+    ElMessage.warning('请先选择图片')
+    return
+  }
+
+  entryRecognitionLoading.value = true
+  entryBatchResults.value = []
+  const plates = []
+
+  for (let i = 0; i < entryBatchImages.value.length; i++) {
+    const file = entryBatchImages.value[i]
+    try {
+      const res = await recognizePlateFromImage(file, 'entry')
+      const plate = extractPlateFromRecognizeResult(res)
+      plates.push({ plate: plate || null, file: file.name })
+    } catch (err) {
+      console.error('批量识别失败', file.name, err)
+      plates.push({ plate: null, file: file.name })
+    }
+  }
+
+  entryBatchResults.value = plates
+  // 自动选中所有识别成功的
+  entryBatchSelected.value = plates
+    .map((_, idx) => idx)
+    .filter(idx => plates[idx].plate)
+
+  const successCount = plates.filter(p => p.plate).length
+  ElMessage.success(`批量识别完成：${successCount}/${plates.length} 张成功`)
+  entryRecognitionLoading.value = false
+}
+
+function toggleBatchSelect(idx) {
+  const pos = entryBatchSelected.value.indexOf(idx)
+  if (pos >= 0) {
+    entryBatchSelected.value.splice(pos, 1)
+  } else {
+    entryBatchSelected.value.push(idx)
+  }
+}
+
+async function simulateBatchVehicleEntry() {
+  if (entryBatchSelected.value.length === 0) {
+    ElMessage.warning('请至少选择一辆车')
+    return
+  }
+
+  batchEntryLoading.value = true
+  batchEntryDone.value = 0
+  let successCount = 0
+  let failCount = 0
+  let skipCount = 0
+
+  for (const idx of entryBatchSelected.value) {
+    const result = entryBatchResults.value[idx]
+    const plate = result?.plate
+    if (!plate) {
+      failCount++
+      batchEntryDone.value++
+      continue
+    }
+
+    try {
+      // 检查车辆是否已在场
+      let alreadyInLot = false
+      try {
+        const quote = await quickPayQuoteNoLogin(plate)
+        if (quote?.found === true) {
+          alreadyInLot = true
+        }
+      } catch (checkErr) {
+        const code = Number(checkErr?.response?.status || 0)
+        if (![400, 404].includes(code)) {
+          throw checkErr
+        }
+        // 404/400 = 车辆未在场，继续执行进场
+      }
+
+      if (alreadyInLot) {
+        skipCount++
+        batchEntryDone.value++
+        continue
+      }
+
+      const targetSpot = await pickRandomAvailableSpot(entrySimulationFloor.value)
+      if (!targetSpot?.space_id) {
+        ElMessage.error(`楼层 ${entrySimulationFloor.value} 无剩余可用车位，批量进场终止`)
+        break
+      }
+
+      await sendWebhookEvent({
+        event_type: 'space_occupied',
+        space_id: targetSpot.space_id,
+        plate_number: plate,
+        timestamp: new Date().toISOString(),
+      })
+      successCount++
+    } catch (err) {
+      console.error('批量进场失败', plate, err)
+      failCount++
+    }
+    batchEntryDone.value++
+  }
+
+  batchEntryLoading.value = false
+  const parts = [`${successCount} 辆成功`]
+  if (skipCount > 0) parts.push(`${skipCount} 辆已在场（跳过）`)
+  if (failCount > 0) parts.push(`${failCount} 辆失败`)
+  const msg = `批量进场完成：${parts.join('，')}`
+
+  if (successCount > 0 || skipCount > 0) {
+    ElMessage.success(msg)
+    plateStore.setPlateNumber(entryBatchResults.value.find(r => r.plate)?.plate || '')
+    await loadHomeStats()
+  } else {
+    ElMessage.warning(msg || '批量进场未成功，请重试')
   }
 }
 
