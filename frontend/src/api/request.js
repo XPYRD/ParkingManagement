@@ -64,7 +64,7 @@ request.interceptors.response.use(
       ElMessage.error('权限不足，请联系管理员')
     } else if (status >= 500) {
       ElMessage.error('服务器异常，请稍后重试')
-    } else {
+    } else if (!error.config?.__suppressToast) {
       // 尝试提取后端返回的详细错误信息
       const detail = data?.detail || error.message
       ElMessage.error(detail)

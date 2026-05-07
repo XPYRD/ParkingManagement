@@ -238,7 +238,7 @@ class ReservationSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and request.user and request.user.is_authenticated:
             from payments.models import Subscription
-            today = date or timezone.localdate()
+            today = timezone.localdate()
             has_active_sub = Subscription.objects.filter(
                 user=request.user,
                 is_active=True,

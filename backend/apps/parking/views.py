@@ -53,6 +53,114 @@ from .serializers import (
 )
 from .navigation import find_path
 
+def _spot_xy(spot):
+    """Return (x, y) for a spot, preferring center coordinates."""
+    x = spot.center_x if spot.center_x is not None else (spot.x or 0)
+    y = spot.center_y if spot.center_y is not None else (spot.y or 0)
+    return float(x), float(y)
+
+
+def _display_name(spot):
+    if spot.node_type == ParkingSpace.NodeType.LOCATION:
+        return spot.location_name or spot.space_id
+    return spot.space_id
+
+
+def _compute_direct_path(start_spot, end_spot):
+    """
+    计算起点到终点的直接路径（图不可达时的回退方案）。
+
+    规则：
+    - 同楼层：直接连线
+    - 跨楼层：在中间楼层插入转折点（电梯/楼梯模拟）
+    """
+    import math
+    sx, sy = _spot_xy(start_spot)
+    ex, ey = _spot_xy(end_spot)
+
+    dist = math.sqrt((sx - ex) ** 2 + (sy - ey) ** 2)
+
+    if start_spot.floor == end_spot.floor:
+        # 同楼层 — 直接连线
+        return {
+            'path': [_display_name(start_spot), _display_name(end_spot)],
+            'path_node_ids': [start_spot.space_id, end_spot.space_id],
+            'path_points': [{'x': sx, 'y': sy}, {'x': ex, 'y': ey}],
+            'distance': round(dist, 2),
+            'steps': [{
+                'from_id': start_spot.space_id,
+                'to_id': end_spot.space_id,
+                'from': _display_name(start_spot),
+                'to': _display_name(end_spot),
+                'distance': round(dist, 2),
+                'from_coords': {'x': sx, 'y': sy},
+                'to_coords': {'x': ex, 'y': ey},
+            }],
+        }
+
+    # 跨楼层 — 插入中间转折点
+    floor_order = ['B2', 'B1', '1F']
+    try:
+        si = floor_order.index(start_spot.floor)
+        ei = floor_order.index(end_spot.floor)
+    except ValueError:
+        si, ei = 0, len(floor_order) - 1
+
+    min_idx, max_idx = min(si, ei), max(si, ei)
+    intermediate_floors = floor_order[min_idx + 1:max_idx]
+
+    path_spots = [_display_name(start_spot)]
+    path_node_ids = [start_spot.space_id]
+    path_points = [{'x': sx, 'y': sy}]
+    steps = []
+
+    prev_x, prev_y = sx, sy
+    prev_spot = start_spot
+
+    for floor in intermediate_floors:
+        # 使用水平中点作为电梯位置
+        mid_x = (sx + ex) / 2
+        mid_y = (sy + ey) / 2
+        path_spots.append(f'{floor}-电梯')
+        path_node_ids.append(f'elevator_{floor}')
+        path_points.append({'x': mid_x, 'y': mid_y})
+        step_dist = math.sqrt((prev_x - mid_x) ** 2 + (prev_y - mid_y) ** 2)
+        steps.append({
+            'from_id': prev_spot.space_id,
+            'to_id': f'elevator_{floor}',
+            'from': _display_name(prev_spot),
+            'to': f'{floor}-电梯',
+            'distance': round(step_dist, 2),
+            'from_coords': {'x': prev_x, 'y': prev_y},
+            'to_coords': {'x': mid_x, 'y': mid_y},
+        })
+        prev_x, prev_y = mid_x, mid_y
+        prev_spot = end_spot  # simplified
+
+    # 最后一段到终点
+    final_dist = math.sqrt((prev_x - ex) ** 2 + (prev_y - ey) ** 2)
+    path_spots.append(_display_name(end_spot))
+    path_node_ids.append(end_spot.space_id)
+    path_points.append({'x': ex, 'y': ey})
+    steps.append({
+        'from_id': prev_spot.space_id if prev_spot != end_spot else start_spot.space_id,
+        'to_id': end_spot.space_id,
+        'from': _display_name(start_spot) if prev_spot == end_spot else _display_name(prev_spot),
+        'to': _display_name(end_spot),
+        'distance': round(final_dist, 2),
+        'from_coords': {'x': prev_x, 'y': prev_y},
+        'to_coords': {'x': ex, 'y': ey},
+    })
+
+    return {
+        'path': path_spots,
+        'path_node_ids': path_node_ids,
+        'path_points': path_points,
+        'distance': round(dist, 2),
+        'steps': steps,
+    }
+
+
 _PLATE_OCR_ENGINE = None
 _PLATE_REGEXES = [
     re.compile(r'[\u4e00-\u9fa5][A-Z][A-Z0-9]{5}'),
@@ -368,14 +476,16 @@ class ParkingSessionViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='by-plate')
     @permission_classes([permissions.AllowAny])
     def by_plate(self, request):
-        """根据车牌号查询当前活跃停车会话（首页快速缴费·无需登录查询）。"""
+        """根据车牌号查询当前在场停车费用（首页快速缴费·无需登录查询）。"""
         plate = request.query_params.get('plate', '').strip().upper()
         if not plate:
             return Response({'detail': '缺少 plate 参数'}, status=status.HTTP_400_BAD_REQUEST)
 
         from accounts.models import Vehicle, User
+        from decimal import Decimal
         from payments.models import PricingRule, Subscription
 
+        # 1. 优先从 ParkingSession 查找（已注册车辆）
         vehicle = Vehicle.objects.filter(plate_number__iexact=plate).first()
         session = None
 
@@ -384,80 +494,190 @@ class ParkingSessionViewSet(viewsets.ModelViewSet):
                 vehicle=vehicle, exit_time__isnull=True
             ).first()
 
-        # 兜底：车辆未注册或无会话时，检查是否有车位记录了该车牌（模拟进场遗留）
+        # 2. 兜底：从车位 current_plate 查找（未注册车辆/模拟进场）
+        entry_time = None
         if not session:
             space_with_plate = ParkingSpace.objects.filter(
                 current_plate__iexact=plate
             ).exclude(current_plate__isnull=True).exclude(current_plate='').first()
 
             if space_with_plate:
-                # 自动创建车辆（若不存在）
-                if not vehicle:
-                    owner = request.user if request.user.is_authenticated else None
-                    if owner is None:
-                        owner = User.objects.filter(is_staff=True).order_by('id').first()
-                    if owner:
-                        vehicle = Vehicle.objects.create(
-                            owner=owner,
-                            plate_number=plate,
-                            brand='模拟车辆',
-                            model='自动创建',
-                        )
-
-                # 自动创建会话
+                entry_time = space_with_plate.bind_time or space_with_plate.last_updated or timezone.now()
                 if vehicle:
                     session = ParkingSession.objects.create(
                         vehicle=vehicle,
                         spot=space_with_plate,
-                        entry_time=space_with_plate.bind_time or space_with_plate.last_updated or timezone.now(),
-                        amount=None,
+                        entry_time=entry_time,
+                        amount=Decimal('0'),
                         payment_status=ParkingSession.PaymentStatus.PENDING,
                     )
 
-        if not session:
-            return Response({'found': False, 'detail': '该车辆当前无停车会话'}, status=status.HTTP_404_NOT_FOUND)
+        if not session and not entry_time:
+            return Response({
+                'found': False,
+                'detail': '未找到该车牌在场停车记录',
+            })
 
-        # 检查车主是否有有效订阅
+        # 3. 订阅检查：如果该车牌是某订阅用户的绑定车辆 → 免费
+        has_active_sub = False
         today = timezone.localdate()
-        has_active_sub = Subscription.objects.filter(
-            user=vehicle.owner,
-            is_active=True,
-            start_date__lte=today,
-            end_date__gte=today,
-        ).exists()
+        if vehicle:
+            has_active_sub = Subscription.objects.filter(
+                user=vehicle.owner,
+                is_active=True,
+                start_date__lte=today,
+                end_date__gte=today,
+            ).exists()
 
         # 有订阅则自动标记免费
-        if has_active_sub and session.payment_status != ParkingSession.PaymentStatus.PAID:
+        if session and has_active_sub and session.payment_status != ParkingSession.PaymentStatus.PAID:
             session.amount = 0
             session.payment_status = ParkingSession.PaymentStatus.PAID
             session.save(update_fields=['amount', 'payment_status'])
 
+        # 4. 计算停车时长和费用
+        effective_entry = session.entry_time if session else entry_time
         now = timezone.now()
-        duration = now - session.entry_time
+        duration = now - effective_entry
         total_minutes = int(duration.total_seconds() / 60)
         hours = total_minutes // 60
         mins = total_minutes % 60
         chargeable_hours = max(1, hours + (1 if mins > 0 else 0))
 
-        # 计算应缴金额：若已存储金额则使用，否则按定价规则实时计算
-        amount = session.amount
-        if amount is None:
+        if has_active_sub:
+            amount = Decimal('0')
+        else:
             hourly_rate = PricingRule.get_active_value(
                 PricingRule.RateType.HOURLY_STANDARD, Decimal('6.00')
             ) or Decimal('6.00')
             amount = hourly_rate * chargeable_hours
 
+        # 5. 检查待出场状态（缴费后30分钟内）
+        payment_state = session.payment_status if session else ParkingSession.PaymentStatus.PENDING
+        if session and session.payment_status == ParkingSession.PaymentStatus.PAID:
+            payment_state = ParkingSession.PaymentStatus.PAID
+        elif not session and space_with_plate and space_with_plate.pending_exit_plate:
+            from django.utils.dateparse import parse_datetime
+            pending_time = space_with_plate.pending_exit_time
+            if pending_time:
+                if timezone.is_naive(pending_time):
+                    pending_time = timezone.make_aware(pending_time)
+                elapsed = (timezone.now() - pending_time).total_seconds()
+                if elapsed <= 1800:  # 30分钟内
+                    payment_state = 'pending_exit'
+
         return Response({
-            'session_id': session.id,
-            'plate_number': vehicle.plate_number,
-            'entry_time': session.entry_time.isoformat(),
+            'session_id': session.id if session else None,
+            'plate_number': vehicle.plate_number if vehicle else plate,
+            'entry_time': effective_entry.isoformat(),
             'duration_text': f'{hours}小时{mins}分钟',
             'chargeable_hours': chargeable_hours,
-            'amount': float(amount or 0),
-            'payment_state': session.payment_status,
+            'amount': float(amount),
+            'payment_state': payment_state,
             'found': True,
             'subscription_free': has_active_sub,
         })
+
+    @action(detail=False, methods=['post'], url_path='quick-pay-by-plate')
+    @permission_classes([permissions.AllowAny])
+    def quick_pay_by_plate(self, request):
+        """通过车牌号直接缴费（无 session_id 的场景，如从车位记录查询的车辆）。"""
+        from accounts.models import User, Vehicle
+        from decimal import Decimal, InvalidOperation
+        from payments.models import Payment, Subscription
+
+        plate = request.data.get('plate_number', '').strip().upper()
+        if not plate:
+            return Response({'detail': '缺少 plate_number 参数'}, status=status.HTTP_400_BAD_REQUEST)
+
+        amount = request.data.get('amount')
+        method = request.data.get('method', 'wechat')
+
+        # 订阅检查
+        today = timezone.localdate()
+        has_active_sub = Subscription.objects.filter(
+            user__vehicles__plate_number__iexact=plate,
+            is_active=True,
+            start_date__lte=today,
+            end_date__gte=today,
+        ).exists()
+
+        if has_active_sub:
+            return Response({
+                'payment_state': 'subscription_free',
+                'leave_tip': '当前订阅有效，车辆进出场免费，无需支付',
+                'session_id': None,
+            })
+
+        try:
+            amount_dec = Decimal(str(amount))
+        except (InvalidOperation, TypeError, ValueError):
+            return Response({'detail': '金额格式错误'}, status=status.HTTP_400_BAD_REQUEST)
+
+        transaction_id = f"QUICK_{int(time.time() * 1000)}"
+        vehicle = Vehicle.objects.filter(plate_number__iexact=plate).first()
+        if request.user.is_authenticated:
+            payment_user = request.user
+        elif vehicle:
+            payment_user = vehicle.owner
+        else:
+            payment_user = User.objects.filter(is_superuser=True).first()
+
+        # 确保有 ParkingSession 来持久化缴费状态
+        space_with_plate = ParkingSpace.objects.filter(
+            current_plate__iexact=plate
+        ).exclude(current_plate__isnull=True).exclude(current_plate='').first()
+        entry_time = None
+        if not vehicle and space_with_plate:
+            entry_time = space_with_plate.bind_time or space_with_plate.last_updated or timezone.now()
+
+        session = None
+        if vehicle:
+            session = ParkingSession.objects.filter(
+                vehicle=vehicle, exit_time__isnull=True
+            ).first()
+            if not session:
+                session = ParkingSession.objects.create(
+                    vehicle=vehicle,
+                    spot=space_with_plate,
+                    entry_time=entry_time or timezone.now(),
+                    amount=amount_dec,
+                    payment_status=ParkingSession.PaymentStatus.PENDING,
+                )
+        elif space_with_plate:
+            # 未注册车辆：创建一个匿名会话
+            anonymous_user = User.objects.filter(is_superuser=True).first()
+            if anonymous_user:
+                session = ParkingSession.objects.create(
+                    vehicle=None,
+                    spot=space_with_plate,
+                    entry_time=entry_time or space_with_plate.bind_time or timezone.now(),
+                    amount=amount_dec,
+                    payment_status=ParkingSession.PaymentStatus.PENDING,
+                )
+
+        payment = Payment.objects.create(
+            user=payment_user,
+            transaction_id=transaction_id,
+            amount=amount_dec,
+            method=method,
+            status=Payment.Status.PENDING,
+            remark=f'快速缴费（按车牌）{plate}',
+            session_id=session.id if session else None,
+        )
+
+        from urllib.parse import quote_plus
+        payload = f"SANDBOX|quick_pay|{transaction_id}|{amount}|{method}"
+        qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=260x260&data={quote_plus(payload)}"
+
+        return Response({
+            'payment_state': 'pending',
+            'transaction_id': transaction_id,
+            'amount': f"{amount_dec:.2f}",
+            'plate_number': plate,
+            'qr_code_url': qr_url,
+            'session_id': session.id if session else None,
+        }, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='quick-pay')
     @permission_classes([permissions.AllowAny])
@@ -502,8 +722,16 @@ class ParkingSessionViewSet(viewsets.ModelViewSet):
 
         from payments.models import Payment
         transaction_id = f"QUICK_{int(time.time() * 1000)}"
+        if request.user.is_authenticated:
+            payment_user = request.user
+        elif session.vehicle:
+            payment_user = session.vehicle.owner
+        else:
+            payment_user = None
+        if not payment_user:
+            payment_user = User.objects.filter(is_superuser=True).first()
         payment = Payment.objects.create(
-            user=request.user if request.user.is_authenticated else None,
+            user=payment_user,
             transaction_id=transaction_id,
             amount=amount_dec,
             method=method,
@@ -525,23 +753,173 @@ class ParkingSessionViewSet(viewsets.ModelViewSet):
             'session_id': session.id,
         }, status=status.HTTP_201_CREATED)
 
+    @action(detail=False, methods=['post'], url_path='confirm-quick-pay')
+    @permission_classes([permissions.AllowAny])
+    def confirm_quick_pay(self, request):
+        """确认快速缴费完成（模拟支付成功），设置车位为待出场状态，并写入 ParkingSession 持久化。"""
+        from accounts.models import Vehicle
+
+        session_id = request.data.get('session_id')
+        plate = request.data.get('plate_number', '').strip().upper()
+
+        if not plate:
+            return Response({'detail': '缺少 plate_number 参数'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 查找车位
+        spot = ParkingSpace.objects.filter(
+            current_plate__iexact=plate
+        ).exclude(current_plate__isnull=True).exclude(current_plate='').first()
+
+        if not spot:
+            return Response({'detail': '未找到该车位'}, status=status.HTTP_404_NOT_FOUND)
+
+        # 设置待出场状态
+        spot.pending_exit_plate = plate
+        spot.pending_exit_time = timezone.now()
+        spot.save(update_fields=['pending_exit_plate', 'pending_exit_time'])
+
+        # 确保有 ParkingSession 来持久化已支付状态
+        session = None
+        vehicle = Vehicle.objects.filter(plate_number__iexact=plate).first()
+        if session_id:
+            session = ParkingSession.objects.filter(id=session_id).first()
+
+        if not session:
+            session = ParkingSession.objects.filter(
+                vehicle=vehicle if vehicle else None,
+                spot=spot,
+                exit_time__isnull=True,
+            ).first()
+
+        if not session:
+            entry_time = spot.bind_time or spot.last_updated or timezone.now()
+            if vehicle:
+                session = ParkingSession.objects.create(
+                    vehicle=vehicle,
+                    spot=spot,
+                    entry_time=entry_time,
+                    amount=spot.current_plate and Decimal('0') or Decimal('0'),
+                    payment_status=ParkingSession.PaymentStatus.PAID,
+                )
+
+        if session and session.payment_status != ParkingSession.PaymentStatus.PAID:
+            session.payment_status = ParkingSession.PaymentStatus.PAID
+            session.save(update_fields=['payment_status'])
+
+        return Response({
+            'detail': '缴费成功，请在30分钟内离场，超时需重新缴费',
+            'pending_exit_time': spot.pending_exit_time.isoformat(),
+        })
+
     @action(detail=True, methods=['post'], url_path='mark-exit')
     @permission_classes([permissions.AllowAny])
     def mark_exit(self, request, pk=None):
-        """标记车辆出场（首页模拟出场）。"""
+        """标记车辆出场（首页模拟出场）。只有订阅用户的绑定车辆可免费出场，其他车辆需先缴费。"""
         session = self.get_object()
         if session.exit_time:
             return Response({'detail': '车辆已出场', 'exit_time': session.exit_time.isoformat()})
+
+        # 判断车主是否有有效订阅
+        vehicle = session.vehicle
+        today = timezone.localdate()
+        has_active_sub = Subscription.objects.filter(
+            user=vehicle.owner,
+            is_active=True,
+            start_date__lte=today,
+            end_date__gte=today,
+        ).exists()
+
+        if has_active_sub:
+            # 订阅用户免费出场
+            session.amount = 0
+            session.payment_status = ParkingSession.PaymentStatus.PAID
+            session.save(update_fields=['amount', 'payment_status'])
+        elif session.payment_status != ParkingSession.PaymentStatus.PAID:
+            # 非订阅用户检查是否已缴费且在30分钟内
+            spot = session.spot
+            if spot and spot.pending_exit_plate and spot.pending_exit_time:
+                elapsed = (timezone.now() - spot.pending_exit_time).total_seconds()
+                if elapsed <= 1800:  # 30分钟内
+                    # 已缴费且在有效期内，允许出场
+                    session.payment_status = ParkingSession.PaymentStatus.PAID
+                    session.save(update_fields=['payment_status'])
+                else:
+                    # 超过30分钟，清除待出场状态
+                    spot.pending_exit_plate = None
+                    spot.pending_exit_time = None
+                    spot.save(update_fields=['pending_exit_plate', 'pending_exit_time'])
+                    return Response(
+                        {'detail': '缴费已超过30分钟，请重新缴费后再出场'},
+                        status=status.HTTP_402_PAYMENT_REQUIRED,
+                    )
+            else:
+                return Response(
+                    {'detail': '请先完成缴费后再出场', 'amount': float(session.amount or 0)},
+                    status=status.HTTP_402_PAYMENT_REQUIRED,
+                )
 
         session.exit_time = timezone.now()
         session.save(update_fields=['exit_time'])
 
         if session.spot:
             session.spot.current_plate = None
+            session.spot.pending_exit_plate = None
+            session.spot.pending_exit_time = None
             session.spot.bind_time = None
-            session.spot.save(update_fields=['current_plate', 'bind_time'])
+            session.spot.save(update_fields=['current_plate', 'pending_exit_plate', 'pending_exit_time', 'bind_time'])
 
-        return Response({'detail': '出场成功', 'exit_time': session.exit_time.isoformat()})
+        return Response({
+            'detail': '出场成功',
+            'exit_time': session.exit_time.isoformat(),
+            'subscription_free': has_active_sub,
+        })
+
+    @action(detail=False, methods=['post'], url_path='mark-exit-by-plate')
+    @permission_classes([permissions.AllowAny])
+    def mark_exit_by_plate(self, request):
+        """通过车牌号直接标记出场（无 session_id 的场景）。"""
+        from accounts.models import Vehicle
+
+        plate = request.data.get('plate_number', '').strip().upper()
+        if not plate:
+            return Response({'detail': '缺少 plate_number 参数'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 查找车位
+        spot = ParkingSpace.objects.filter(
+            current_plate__iexact=plate
+        ).exclude(current_plate__isnull=True).exclude(current_plate='').first()
+
+        if not spot:
+            return Response({'detail': '未找到该车位'}, status=status.HTTP_404_NOT_FOUND)
+
+        # 检查是否已缴费
+        if spot.pending_exit_plate and spot.pending_exit_time:
+            elapsed = (timezone.now() - spot.pending_exit_time).total_seconds()
+            if elapsed > 1800:  # 超过30分钟
+                spot.pending_exit_plate = None
+                spot.pending_exit_time = None
+                spot.save(update_fields=['pending_exit_plate', 'pending_exit_time'])
+                return Response(
+                    {'detail': '缴费已超过30分钟，请重新缴费后再出场'},
+                    status=status.HTTP_402_PAYMENT_REQUIRED,
+                )
+        else:
+            return Response(
+                {'detail': '请先完成缴费后再出场'},
+                status=status.HTTP_402_PAYMENT_REQUIRED,
+            )
+
+        # 清除车位信息
+        spot.current_plate = None
+        spot.pending_exit_plate = None
+        spot.pending_exit_time = None
+        spot.bind_time = None
+        spot.save(update_fields=['current_plate', 'pending_exit_plate', 'pending_exit_time', 'bind_time'])
+
+        return Response({
+            'detail': '出场成功',
+            'exit_time': timezone.now().isoformat(),
+        })
 
 
 class ReservationViewSet(viewsets.ModelViewSet):
@@ -694,19 +1072,11 @@ class NavigationViewSet(viewsets.ViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # 计算路径
+        # 计算路径 — 优先使用图搜索（Dijkstra），图不可达时回退到直接路径
         path_result = find_path(start_spot_id, end_spot_id)
 
         if path_result is None:
-            return Response(
-                {
-                    'error': f'无法从 {start_spot.space_id} 到达 {end_spot.space_id}',
-                    'error_code': 'unreachable',
-                    'start': start_spot.space_id,
-                    'end': end_spot.space_id,
-                },
-                status=status.HTTP_404_NOT_FOUND
-            )
+            path_result = _compute_direct_path(start_spot, end_spot)
 
         serializer = NavigationPathSerializer(path_result)
         return Response(serializer.data)
@@ -765,7 +1135,8 @@ class MapViewSet(viewsets.ViewSet):
         - 'occupied': 占用 (填充色 #ffebee)
         """
         floor = request.query_params.get('floor')
-        spaces = ParkingSpace.objects.filter(node_type=ParkingSpace.NodeType.PARKING).order_by('space_id')
+        # 同时返回车位和地点节点（电梯/出入口等），前端需要地点节点作为导航起点
+        spaces = ParkingSpace.objects.all().order_by('space_id')
         if floor:
             spaces = spaces.filter(floor=floor)
 
@@ -917,12 +1288,15 @@ class HardwareWebhookViewSet(viewsets.ViewSet):
 
             # 创建停车会话
             from accounts.models import Vehicle
+            from decimal import Decimal
             from payments.models import Subscription
             vehicle = Vehicle.objects.filter(plate_number__iexact=plate_number or '').first()
 
             # 模拟场景：车辆未注册时自动创建，使进出场流程闭环
             if not vehicle and plate_number:
-                owner = request.user if request.user.is_authenticated else None
+                owner = None
+                if request.user.is_authenticated:
+                    owner = request.user
                 if owner is None:
                     from accounts.models import User
                     owner = User.objects.filter(is_staff=True).order_by('id').first()
@@ -932,6 +1306,7 @@ class HardwareWebhookViewSet(viewsets.ViewSet):
                         plate_number=plate_number,
                         brand='模拟车辆',
                         model='自动创建',
+                        is_simulated=True,
                     )
 
             if vehicle:
@@ -946,7 +1321,7 @@ class HardwareWebhookViewSet(viewsets.ViewSet):
                     vehicle=vehicle,
                     spot=parking_space,
                     entry_time=timezone.now(),
-                    amount=0 if has_active_sub else None,
+                    amount=Decimal('0'),
                     payment_status=(
                         ParkingSession.PaymentStatus.PAID
                         if has_active_sub

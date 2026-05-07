@@ -43,19 +43,21 @@
         <div class="flex flex-col md:flex-row gap-3">
           <!-- 起点选择 -->
           <div class="w-full md:w-80 relative">
-             <select 
+             <select
               v-model="selectedStartId"
               class="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
             >
-              <option :value="null">-- 选择我的位置 (如电梯或起始车位) --</option>
-              <optgroup label="公共地标">
-                <option v-for="node in startNodes" :key="'landmark-'+node.id" :value="node.id">
-                  {{ node.name }}
+              <option :value="null">-- 选择我的位置 --</option>
+              <!-- 公共地标：按楼层分组 -->
+              <optgroup v-for="floor in floors" :key="'floor-'+floor" :label="floor + ' 公共位置'">
+                <option v-for="node in publicNodesByFloor[floor]" :key="'loc-'+node.id" :value="node.id">
+                  {{ node.icon }} {{ node.name }}
                 </option>
               </optgroup>
-              <optgroup label="所有车位">
-                <option v-for="spot in allSpots.filter(s => s.spot_id)" :key="'spot-'+spot.id" :value="spot.id">
-                  🅿️ {{ spot.spot_id }}
+              <!-- 所有车位 -->
+              <optgroup label="车位">
+                <option v-for="spot in allSpots.filter(s => s.spot_id && s.node_type !== 'location')" :key="'spot-'+spot.id" :value="spot.id">
+                  {{ spot.spot_id.replace('space_', '') }}
                 </option>
               </optgroup>
             </select>
@@ -165,11 +167,13 @@
             
             <!-- Canvas 地图（SVG背景 + 停车位标记 + 内部缩放/平移） -->
             <div class="aspect-[1098/771] w-full">
-              <ParkingMapSVGv3 
+              <ParkingMapSVGv3
                 :spots="filteredSpots"
                 :selectedId="selectedSpot?.id"
                 :navigationPath="navigationPath"
+                :publicLocations="publicLocations.filter(l => l.floor === currentFloor)"
                 @select="handleSpotClick"
+                @select-public="handlePublicLocationClick"
               />
             </div>
           </div>
@@ -370,8 +374,18 @@ const spotDuration = ref(null)  // 选中车位的停车时长信息
 
 const navigationPath = ref([]) // 路径点坐标列表
 const navigationInfo = ref(null) // 导航距离时间信息
-const startNodes = ref([]) // 可作为起点的地标 (电梯、楼梯等)
+const publicLocations = ref([]) // 公共位置节点（电梯/出入口等）
 const selectedStartId = ref(null) // 用户选择的起点 ID
+
+// 公共位置图标映射
+function locationIcon(name) {
+  if (!name) return ''
+  if (name.includes('电梯')) return '⬆️'
+  if (name.includes('出口') || name.includes('入口')) return '\u{1F6AA}'
+  if (name.includes('楼梯')) return '\u{1F6B6}'
+  if (name.includes('服务')) return '\u{1F481}'
+  return '\u{1F4CD}'
+}
 
 // 状态映射
 const statusMap = {
@@ -399,6 +413,22 @@ const legends = [
 ]
 
 // ═════════════════ 计算属性 ═════════════════
+
+/**
+ * 按楼层分组的公共位置节点
+ */
+const publicNodesByFloor = computed(() => {
+  const result = {}
+  for (const floor of floors) {
+    result[floor] = publicLocations.value
+      .filter(n => n.floor === floor)
+      .map(n => ({
+        ...n,
+        icon: locationIcon(n.name),
+      }))
+  }
+  return result
+})
 
 /**
  * 过滤后的车位列表（仅显示车位，排除地标）
@@ -492,24 +522,28 @@ async function loadSpots() {
   isLoading.value = true
   try {
     const res = await getSpacesByFloor(currentFloor.value)
-    
+
     const spotsData = res.data || res || []
-    
-    // 筛选出所有“地标”或“电梯”等非停车位的点作为起点建议
-    // 后端对应的字段是 location_name 和 node_type === 'location'
-    startNodes.value = spotsData
+
+    // 公共位置节点（电梯/出入口等）
+    publicLocations.value = spotsData
       .filter(s => s.node_type === 'location' || (s.location_name && s.location_name.trim()))
       .map(s => ({
         id: s.id,
         name: s.location_name || s.space_id,
-        space_id: s.space_id
+        space_id: s.space_id,
+        floor: s.floor,
+        center_x: s.center_x,
+        center_y: s.center_y,
+        x: s.x,
+        y: s.y,
       }))
 
-    if (!selectedStartId.value && startNodes.value.length > 0) {
-      selectedStartId.value = startNodes.value[0].id
+    if (!selectedStartId.value && publicLocations.value.length > 0) {
+      selectedStartId.value = publicLocations.value[0].id
     }
     
-    console.log('Detected start nodes:', startNodes.value)
+    console.log('Detected start nodes:', publicLocations.value)
     
     // 数据转换（确保必要字段存在）
     allSpots.value = spotsData.map(s => {
@@ -649,6 +683,11 @@ async function handlePlateSearch() {
       
       if (matched) {
         selectedSpot.value = matched
+        // 触发路径规划
+        const finalTargetId = matched.id
+        if (finalTargetId) {
+          await triggerNavigation(finalTargetId)
+        }
         ElMessage.success(`已在地图中定位到车位 ${query}`)
       } else {
         ElMessage.info(`车位 ${query} 可能在其他楼层`)
@@ -708,10 +747,11 @@ async function triggerNavigation(targetSpotId) {
   }
 
   const startSpot = allSpots.value.find(s => Number(s.id) === Number(selectedStartId.value))
+    || publicLocations.value.find(s => Number(s.id) === Number(selectedStartId.value))
   if (!startSpot) {
     selectedStartId.value = null
     navigationPath.value = []
-    ElMessage.warning('当前起点不在本楼层，请重新选择“我的位置”')
+    ElMessage.warning('当前起点不在本楼层，请重新选择”我的位置”')
     return
   }
 
@@ -732,6 +772,12 @@ async function triggerNavigation(targetSpotId) {
             return points
           })
         : []
+
+    if (res?.unreachable) {
+      navigationPath.value = []
+      ElMessage.warning(res.message || '无法规划路线，两位置之间无通路')
+      return
+    }
 
     if (pathPoints.length > 0) {
       navigationPath.value = pathPoints
@@ -780,6 +826,14 @@ async function handleSpotClick(spot) {
   if (selectedStartId.value) {
     triggerNavigation(spot.id)
   }
+}
+
+/**
+ * 点击公共位置（电梯/出入口）设为起点
+ */
+function handlePublicLocationClick(loc) {
+  selectedStartId.value = loc.id
+  ElMessage.success(`已设置起点：${loc.name}`)
 }
 
 /**

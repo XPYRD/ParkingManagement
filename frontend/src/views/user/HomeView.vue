@@ -67,7 +67,7 @@
           </div>
 
           <div class="p-8 md:p-10 bg-white/95">
-            <el-form label-position="top" class="space-y-3">
+            <el-form label-position="top" class="space-y-3" @submit.prevent>
               <el-form-item label="车牌来源">
                 <el-radio-group v-model="plateSourceMode" class="!flex gap-2 !w-full">
                   <el-radio-button label="manual" class="flex-1 text-center">手动输入</el-radio-button>
@@ -157,7 +157,11 @@
                   <span>当前应缴</span>
                   <span class="font-black text-lg text-primary">¥ {{ quickPayQuote.amount }}</span>
                 </div>
-                <p v-if="quickPayQuote.leave_tip" class="text-xs text-amber-600 font-semibold">
+                <p v-if="quickPayQuote.payment_state === 'pending_exit'" class="text-xs text-green-600 font-semibold flex items-center gap-1">
+                  <span class="material-symbols-outlined text-sm">check_circle</span>
+                  已缴费待出场，请在30分钟内离场
+                </p>
+                <p v-else-if="quickPayQuote.leave_tip" class="text-xs text-amber-600 font-semibold">
                   {{ quickPayQuote.leave_tip }}
                 </p>
               </div>
@@ -176,17 +180,23 @@
                       <span>支付宝</span>
                     </span>
                   </el-radio-button>
-                  <el-radio-button label="card" class="flex-1 text-center" :disabled="!hasBankCard">
+                  <el-radio-button label="card" class="flex-1 text-center">
                     <span class="inline-flex items-center gap-1">
                       <img src="/银行卡.svg" alt="银行卡支付" class="w-4 h-4 object-contain" />
                       <span>银行卡</span>
                     </span>
                   </el-radio-button>
                 </el-radio-group>
-                <p v-if="!hasBankCard" class="mt-2 text-xs text-slate-500">
-                  暂未添加银行卡，
-                  <router-link to="/payment" class="text-primary hover:underline">前往支付中心添加</router-link>
-                </p>
+                <!-- 银行卡已选但未添加 -->
+                <div v-if="quickPayForm.method === 'card' && !hasBankCard" class="mt-3 p-3 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <span class="material-symbols-outlined text-amber-500 text-lg">warning</span>
+                    <span class="text-sm text-amber-700">暂未添加银行卡</span>
+                  </div>
+                  <router-link to="/payment" class="px-3 py-1 text-xs font-bold text-white bg-primary rounded-lg hover:bg-primary-dark transition-colors">
+                    + 添加银行卡
+                  </router-link>
+                </div>
               </el-form-item>
 
               <el-button
@@ -194,10 +204,10 @@
                 size="large"
                 class="!w-full !h-12 !font-extrabold !text-base"
                 :loading="quickPayLoading"
-                :disabled="!quickPayQuote || Number(quickPayQuote.amount || 0) <= 0"
+                :disabled="!quickPayQuote || Number(quickPayQuote.amount || 0) <= 0 || quickPayQuote.payment_state === 'pending_exit'"
                 @click="submitQuickPay"
               >
-                {{ quickPayQuote ? (Number(quickPayQuote.amount || 0) > 0 ? '立即支付' : '已缴费待出场') : '请先查询' }}
+                {{ quickPayQuote ? (quickPayQuote.payment_state === 'pending_exit' ? '已缴费待出场' : (Number(quickPayQuote.amount || 0) > 0 ? '立即支付' : '已缴费待出场')) : '请先查询' }}
               </el-button>
             </el-form>
           </div>
@@ -239,7 +249,7 @@
           <button
             class="flex-1 py-3 px-4 rounded-[10px] text-sm font-bold tracking-wide transition-all duration-300"
             :class="simulationTab === 'exit' ? 'bg-cyan-500/15 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.15)]' : 'text-slate-500 hover:text-slate-300'"
-            :disabled="!quickPayQuote || !quickPayQuote.session_id"
+            :disabled="!quickPayQuote || quickPayQuote.found !== true"
             @click="simulationTab = 'exit'"
           >
             <span class="inline-flex items-center gap-2">
@@ -349,22 +359,22 @@
           <!-- 在场状态指示 -->
           <div class="flex items-center gap-4 p-4 rounded-xl bg-slate-800/40 border border-slate-700/30">
             <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-              :class="quickPayQuote && quickPayQuote.session_id ? 'bg-cyan-500/10' : 'bg-slate-700/50'">
+              :class="quickPayQuote?.found ? 'bg-cyan-500/10' : 'bg-slate-700/50'">
               <span class="material-symbols-outlined text-xl"
-                :class="quickPayQuote && quickPayQuote.session_id ? 'text-cyan-400' : 'text-slate-500'">
-                {{ quickPayQuote && quickPayQuote.session_id ? 'directions_car' : 'block' }}
+                :class="quickPayQuote?.found ? 'text-cyan-400' : 'text-slate-500'">
+                {{ quickPayQuote?.found ? 'directions_car' : 'block' }}
               </span>
             </div>
             <div>
-              <p class="text-sm font-bold" :class="quickPayQuote && quickPayQuote.session_id ? 'text-slate-200' : 'text-slate-500'">
-                {{ quickPayQuote && quickPayQuote.session_id ? '车辆在场，可以出场' : '无在场记录' }}
+              <p class="text-sm font-bold" :class="quickPayQuote?.found ? 'text-slate-200' : 'text-slate-500'">
+                {{ quickPayQuote?.found ? '车辆在场，可以出场' : '无在场记录' }}
               </p>
               <p class="text-[11px] text-slate-500 font-mono tracking-wider mt-0.5">
-                {{ quickPayQuote && quickPayQuote.session_id ? '需先在上方快速缴费通道查询并支付后执行出场' : '请先在快速缴费通道查询停车记录' }}
+                {{ quickPayQuote?.found ? '需先在上方快速缴费通道查询并支付后执行出场' : '请先在快速缴费通道查询停车记录' }}
               </p>
             </div>
             <div class="flex-1 hidden sm:block"></div>
-            <div v-if="quickPayQuote && quickPayQuote.session_id" class="text-right flex-shrink-0">
+            <div v-if="quickPayQuote?.found" class="text-right flex-shrink-0">
               <p class="text-[10px] text-slate-500 font-mono tracking-wider uppercase">已停时长</p>
               <p class="text-lg font-black text-slate-200 font-mono">{{ quickPayQuote.duration_text }}</p>
             </div>
@@ -375,7 +385,7 @@
             <button
               class="sim-launch-btn sim-launch-exit"
               :class="{ 'sim-launch-loading': markExitLoading }"
-              :disabled="!quickPayQuote || !quickPayQuote.session_id || markExitLoading"
+              :disabled="!quickPayQuote || quickPayQuote.found !== true || markExitLoading"
               @click="simulateVehicleExit"
             >
               <span class="sim-launch-ring"></span>
@@ -385,7 +395,7 @@
                 {{ markExitLoading ? '执行出场...' : '执行出场' }}
               </span>
             </button>
-            <span v-if="quickPayQuote && quickPayQuote.session_id" class="text-[10px] text-slate-600 font-mono tracking-wider pb-1">释放车位并结算费用</span>
+            <span v-if="quickPayQuote?.found" class="text-[10px] text-slate-600 font-mono tracking-wider pb-1">释放车位并结算费用</span>
           </div>
         </div>
       </div>
@@ -474,7 +484,13 @@
         <p class="mt-2 text-xs text-slate-500">交易号：{{ quickPayResult.transaction_id }}</p>
       </div>
       <template #footer>
-        <el-button type="primary" @click="confirmQuickPayPaid">我已支付（模拟）</el-button>
+        <div class="w-full space-y-3">
+          <div class="p-3 rounded-lg bg-amber-50 border border-amber-200 flex items-center gap-2">
+            <span class="material-symbols-outlined text-amber-500 text-lg">schedule</span>
+            <span class="text-sm text-amber-700 font-bold">请在30分钟内离场，超过需重新缴费</span>
+          </div>
+          <el-button type="primary" @click="confirmQuickPayPaid">我已支付（模拟）</el-button>
+        </div>
       </template>
     </el-dialog>
 
@@ -489,7 +505,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getParkingSpaceStatistics, getSpacesByFloor, sendWebhookEvent, recognizePlateFromImage } from '@/api/parking'
-import { quickPayNoLogin, quickPayQuoteNoLogin, quickPayMarkExit } from '@/api/payment'
+import { quickPayNoLogin, quickPayQuoteNoLogin, quickPayMarkExit, quickPayByPlate, quickPayMarkExitByPlate, confirmQuickPay } from '@/api/payment'
 import { getVehicles } from '@/api/user'
 import PlateNumberInput from '@/components/PlateNumberInput.vue'
 import heroImage from '@/assets/images/hero_bg.png'
@@ -569,12 +585,18 @@ async function submitQuickPay() {
 
   quickPayLoading.value = true
   try {
-    const res = await quickPayNoLogin(
-      plate,
-      quickPayQuote.value.amount,
-      quickPayForm.value.method,
-      quickPayQuote.value.session_id,
-    )
+    const res = quickPayQuote.value.session_id
+      ? await quickPayNoLogin(
+          plate,
+          quickPayQuote.value.amount,
+          quickPayForm.value.method,
+          quickPayQuote.value.session_id,
+        )
+      : await quickPayByPlate(
+          plate,
+          quickPayQuote.value.amount,
+          quickPayForm.value.method,
+        )
 
     if (res?.payment_state === 'subscription_free') {
       ElMessage.success(res?.leave_tip || '当前订阅有效，车辆进出场免费，无需支付')
@@ -598,7 +620,7 @@ async function submitQuickPay() {
 }
 
 async function simulateVehicleExit() {
-  if (!quickPayQuote.value?.session_id) {
+  if (!quickPayQuote.value?.found) {
     ElMessage.warning('请先查询在场车辆')
     return
   }
@@ -606,12 +628,18 @@ async function simulateVehicleExit() {
   const plate = getCurrentPlateNumber()
   markExitLoading.value = true
   try {
-    await quickPayMarkExit(plate, quickPayQuote.value.session_id)
+    if (quickPayQuote.value.session_id) {
+      await quickPayMarkExit(plate, quickPayQuote.value.session_id)
+    } else {
+      await quickPayMarkExitByPlate(plate)
+    }
     ElMessage.success('已模拟车辆出场')
     quickPayQuote.value = null
     await queryQuickPayQuote(false)
   } catch (err) {
     console.error('模拟出场失败', err)
+    const backendMessage = err?.response?.data?.detail || '模拟出场失败'
+    ElMessage.error(backendMessage)
   } finally {
     markExitLoading.value = false
   }
@@ -778,9 +806,16 @@ async function simulateVehicleEntry() {
 }
 
 async function confirmQuickPayPaid() {
-  quickPayDialogVisible.value = false
-  await queryQuickPayQuote(false)
-  ElMessage.success('已模拟扫码支付成功')
+  const plate = getCurrentPlateNumber()
+  try {
+    await confirmQuickPay(quickPayQuote.value?.session_id, plate)
+    quickPayDialogVisible.value = false
+    ElMessage.success('已模拟扫码支付成功，请在30分钟内离场')
+    await queryQuickPayQuote(false)
+  } catch (err) {
+    console.error('确认支付失败', err)
+    ElMessage.error('确认支付失败，请重试')
+  }
 }
 
 async function queryQuickPayQuote(showToast = true) {
@@ -802,6 +837,7 @@ async function queryQuickPayQuote(showToast = true) {
     }
 
     quickPayQuote.value = {
+      found: true,
       session_id: res?.session_id,
       duration_text: res?.duration_text || '--',
       chargeable_hours: res?.chargeable_hours ?? 0,
@@ -813,7 +849,11 @@ async function queryQuickPayQuote(showToast = true) {
       ElMessage.success('已查询到当前停车费用')
     }
   } catch (err) {
-    console.error('查询停车费用失败', err)
+    const code = Number(err?.response?.status || 0)
+    if (code !== 404) {
+      console.error('查询停车费用失败', err)
+    }
+    // 404 = 车辆不在场（已出场或未入场），属于正常状态
   } finally {
     quickPayQuoteLoading.value = false
   }
@@ -839,9 +879,7 @@ function getCurrentPlateNumber() {
 
 function handleQuickPayPlateInput(value) {
   const normalized = String(value || '').toUpperCase().replace(/\s+/g, '')
-  if (normalized !== quickPayForm.value.plate_number) {
-    quickPayForm.value.plate_number = normalized
-  }
+  quickPayForm.value.plate_number = normalized
   plateStore.setPlateNumber(normalized)
 }
 
@@ -941,7 +979,6 @@ watch(
     if (plateSourceMode.value === 'manual') {
       plateStore.setPlateNumber(val)
     }
-    quickPayQuote.value = null
   },
 )
 

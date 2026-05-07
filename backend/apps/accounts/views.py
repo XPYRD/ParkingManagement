@@ -85,8 +85,8 @@ class VehicleViewSet(viewsets.ModelViewSet):
     serializer_class = VehicleSerializer
 
     def get_queryset(self):
-        """过滤：只返回当前用户的车辆"""
-        return Vehicle.objects.filter(owner=self.request.user)
+        """过滤：只返回当前用户的车辆，排除模拟车辆"""
+        return Vehicle.objects.filter(owner=self.request.user, is_simulated=False)
 
     @action(detail=True, methods=['post'], url_path='set-primary')
     def set_primary(self, request, pk=None):

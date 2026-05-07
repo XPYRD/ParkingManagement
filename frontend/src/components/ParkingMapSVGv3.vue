@@ -99,24 +99,6 @@
               filter="url(#navigation-glow)"
               marker-end="url(#navigation-arrow)"
             />
-            <circle
-              :cx="navigationAnchors.start ? navigationAnchors.start.x : navigationPathPoints[0].x"
-              :cy="navigationAnchors.start ? navigationAnchors.start.y : navigationPathPoints[0].y"
-              r="7"
-              fill="#2563eb"
-              stroke="#fff"
-              stroke-width="3"
-              class="navigation-start"
-            />
-            <circle
-              :cx="navigationAnchors.end ? navigationAnchors.end.x : navigationPathPoints[navigationPathPoints.length - 1].x"
-              :cy="navigationAnchors.end ? navigationAnchors.end.y : navigationPathPoints[navigationPathPoints.length - 1].y"
-              r="7"
-              fill="#ef4444"
-              stroke="#fff"
-              stroke-width="3"
-              class="navigation-end"
-            />
           </g>
 
           <g class="spots-layer">
@@ -179,6 +161,42 @@
               </text>
             </g>
           </g>
+
+          <g class="public-locations-layer">
+            <g
+              v-for="loc in publicLocations"
+              :key="'pub-'+loc.id"
+              @click="() => emit('select-public', loc)"
+              class="location-group"
+              :class="{ selected: loc.id === selectedId }"
+              :transform="`translate(${Number(loc.center_x || loc.x || 0)}, ${Number(loc.center_y || loc.y || 0)})`"
+            >
+              <rect
+                x="-16" y="-16" width="32" height="32"
+                rx="6"
+                :fill="loc.id === selectedId ? '#3b82f6' : '#6366f1'"
+                :stroke="loc.id === selectedId ? '#1d4ed8' : '#4f46e5'"
+                stroke-width="2"
+                opacity="0.85"
+                class="location-marker"
+              />
+              <text
+                x="0" y="1"
+                text-anchor="middle"
+                dominant-baseline="middle"
+                font-size="16"
+                pointer-events="none"
+              >{{ locationEmoji(loc) }}</text>
+              <text
+                x="0" y="24"
+                text-anchor="middle"
+                font-size="9"
+                font-weight="600"
+                fill="#475569"
+                pointer-events="none"
+              >{{ loc.name }}</text>
+            </g>
+          </g>
         </g>
       </svg>
     </div>
@@ -192,6 +210,7 @@ const props = defineProps({
   spots: { type: Array, required: true, default: () => [] },
   selectedId: { type: [String, Number], default: null },
   navigationPath: { type: Array, default: () => [] },
+  publicLocations: { type: Array, default: () => [] },
 })
 
 const emit = defineEmits(['select'])
@@ -223,74 +242,26 @@ const navigationPathPoints = computed(() => {
     .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
 })
 
-// 计算从车位边缘开始/结束的渲染路径，避免穿过车位中心。
-function _normalize(vx, vy) {
-  const len = Math.hypot(vx, vy) || 1
-  return { x: vx / len, y: vy / len }
-}
-
-function computeNavigationPathData(pts) {
-  if (!pts || pts.length < 2) return { d: '', start: null, end: null }
-
-  const out = []
-  const offsetDist = Math.max(SPOT_WIDTH, SPOT_HEIGHT) / 2 * 0.9
-
-  let startAnchor = null
-  let endAnchor = null
-
+function buildPathD(pts) {
+  if (!pts || pts.length < 2) return ''
+  let d = `M ${pts[0].x} ${pts[0].y}`
   for (let i = 1; i < pts.length; i++) {
-    const prev = pts[i - 1]
-    const curr = pts[i]
-    const dx = curr.x - prev.x
-    const dy = curr.y - prev.y
-    const n = _normalize(dx, dy)
-
-    // 从 prev 向外偏移，curr 向内偏移，保证不从车位中心直接穿过
-    const segStart = { x: prev.x + n.x * offsetDist, y: prev.y + n.y * offsetDist }
-    const segEnd = { x: curr.x - n.x * offsetDist, y: curr.y - n.y * offsetDist }
-
-    if (i === 1) {
-      startAnchor = segStart
-      out.push(segStart)
-    }
-
-    // 使用 Manhattan 风格分段：横向/纵向折返，减少斜穿
-    const midX = segStart.x + (segEnd.x - segStart.x) / 2
-    out.push({ x: midX, y: segStart.y })
-    out.push({ x: midX, y: segEnd.y })
-    out.push(segEnd)
-
-    if (i === pts.length - 1) {
-      endAnchor = segEnd
-    }
+    d += ` L ${pts[i].x} ${pts[i].y}`
   }
-
-  if (!startAnchor) startAnchor = pts[0]
-  if (!endAnchor) endAnchor = pts[pts.length - 1]
-
-  // 从 points 数组生成 SVG 路径 d
-  let d = ''
-  if (out.length > 0) {
-    d = `M ${out[0].x} ${out[0].y}`
-    for (let i = 1; i < out.length; i++) {
-      d += ` L ${out[i].x} ${out[i].y}`
-    }
-  }
-
-  return { d, start: startAnchor, end: endAnchor }
+  return d
 }
 
-const navigationPathD = computed(() => {
-  const pts = navigationPathPoints.value
-  if (pts.length < 2) return ''
-  return computeNavigationPathData(pts).d
-})
+const navigationPathD = computed(() => buildPathD(navigationPathPoints.value))
 
-const navigationAnchors = computed(() => {
-  const pts = navigationPathPoints.value
-  if (pts.length < 2) return { start: null, end: null }
-  return computeNavigationPathData(pts)
-})
+function locationEmoji(loc) {
+  const name = loc.name || ''
+  if (name.includes('电梯')) return '\u{2B06}'
+  if (name.includes('出口')) return '\u{1F6AA}'
+  if (name.includes('入口')) return '\u{1F6AA}'
+  if (name.includes('楼梯')) return '\u{1F6B6}'
+  if (name.includes('服务')) return '\u{1F481}'
+  return '\u{1F4CD}'
+}
 
 onMounted(() => {
   loadSVGBackground()
@@ -419,26 +390,21 @@ svg {
   animation: dash-flow 1.6s linear infinite;
 }
 
-.navigation-start,
-.navigation-end {
-  animation: pulse-node 1.8s ease-in-out infinite;
-}
-
 @keyframes dash-flow {
   to {
     stroke-dashoffset: -24;
   }
 }
 
-@keyframes pulse-node {
-  0%,
-  100% {
-    transform: scale(1);
-    transform-origin: center;
-  }
-  50% {
-    transform: scale(1.12);
-    transform-origin: center;
-  }
+.location-group {
+  cursor: pointer;
+}
+
+.location-marker {
+  transition: opacity 0.2s;
+}
+
+.location-group:hover .location-marker {
+  opacity: 1 !important;
 }
 </style>

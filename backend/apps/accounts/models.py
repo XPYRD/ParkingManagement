@@ -113,6 +113,10 @@ class Vehicle(models.Model):
         '默认车辆', default=False,
         help_text='个人中心(_5)车辆列表中的"默认"标签'
     )
+    is_simulated = models.BooleanField(
+        '模拟车辆', default=False,
+        help_text='是否通过模拟进场创建的临时车辆，不展示在用户个人车辆列表中'
+    )
     created_at = models.DateTimeField('创建时间', auto_now_add=True)
     updated_at = models.DateTimeField('更新时间', auto_now=True)
 

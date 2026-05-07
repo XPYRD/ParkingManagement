@@ -143,10 +143,13 @@ export function getTopUpRecords(params) {
 
 /** 根据车牌号查询当前停车会话（快速缴费·获取报价） */
 export function quickPayQuoteNoLogin(plate) {
-  return request.get('/parking/sessions/by-plate/', { params: { plate } })
+  return request.get('/parking/sessions/by-plate/', {
+    params: { plate },
+    __suppressToast: true,  // 404 = 车辆不在场，属于正常业务状态
+  })
 }
 
-/** 快速缴费：创建支付订单或检查订阅免费 */
+/** 快速缴费：创建支付订单或检查订阅免费（有 session_id 的场景） */
 export function quickPayNoLogin(plate, amount, method, sessionId) {
   return request.post(`/parking/sessions/${sessionId}/quick-pay/`, {
     plate_number: plate,
@@ -155,9 +158,33 @@ export function quickPayNoLogin(plate, amount, method, sessionId) {
   })
 }
 
-/** 标记车辆出场（模拟出场） */
+/** 快速缴费：通过车牌号直接缴费（无 session_id 的场景） */
+export function quickPayByPlate(plate, amount, method) {
+  return request.post('/parking/sessions/quick-pay-by-plate/', {
+    plate_number: plate,
+    amount,
+    method,
+  })
+}
+
+/** 确认快速缴费完成（模拟支付成功），设置车位为待出场状态 */
+export function confirmQuickPay(sessionId, plate) {
+  return request.post('/parking/sessions/confirm-quick-pay/', {
+    session_id: sessionId,
+    plate_number: plate,
+  })
+}
+
+/** 标记车辆出场（模拟出场，有 session_id 的场景） */
 export function quickPayMarkExit(plate, sessionId) {
   return request.post(`/parking/sessions/${sessionId}/mark-exit/`, {
+    plate_number: plate,
+  })
+}
+
+/** 标记车辆出场（模拟出场，无 session_id 的场景，按车牌直接出场） */
+export function quickPayMarkExitByPlate(plate) {
+  return request.post('/parking/sessions/mark-exit-by-plate/', {
     plate_number: plate,
   })
 }

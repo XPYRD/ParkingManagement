@@ -10,7 +10,12 @@
       "Bash(set PYTHONIOENCODING=utf-8)",
       "Bash(node *)",
       "Bash(npx vite *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(curl -s \"http://127.0.0.1:8080/api/v1/parking/sessions/by-plate/?plate=%E6%B5%99ASB886\")",
+      "Bash(curl *)",
+      "Bash(wc -l svg/interactive_map.svg)",
+      "Bash(ls svg/)",
+      "Bash(ls backend/apps/svg/)"
     ]
   }
 }

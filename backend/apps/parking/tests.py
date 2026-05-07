@@ -155,10 +155,11 @@ class SessionTestCase(APITestCase):
         self.assertGreaterEqual(len(resp.data), 1)
 
     def test_by_plate_not_found(self):
-        """by-plate returns 404 when vehicle not found"""
+        """by-plate returns found=false when vehicle not found"""
         url = reverse('parking:session-by-plate')
         resp = self.client.get(f"{url}?plate=NOTEXIST")
-        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertFalse(resp.data['found'])
 
     def test_by_plate_found(self):
         """by-plate returns session info when vehicle exists"""
@@ -183,6 +184,17 @@ class SessionTestCase(APITestCase):
         self.assertIn(resp.status_code, [200, 201])
 
     def test_mark_exit(self):
+        from payments.models import Subscription
+        from decimal import Decimal
+        # Create active subscription for vehicle owner so exit is free
+        Subscription.objects.create(
+            user=self.user,
+            plan='monthly',
+            price=Decimal('149.00'),
+            start_date=timezone.localdate() - timezone.timedelta(days=10),
+            end_date=timezone.localdate() + timezone.timedelta(days=10),
+            is_active=True,
+        )
         admin = User.objects.create_superuser(username='admin4', password='x', phone='13800000006')
         session = ParkingSession.objects.create(
             vehicle=self.vehicle, spot=self.spot,

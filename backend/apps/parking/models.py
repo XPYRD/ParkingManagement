@@ -61,6 +61,14 @@ class ParkingSpace(models.Model):
         max_length=20, null=True, blank=True, verbose_name='当前停放车牌',
         help_text='若为空则表示车位空闲'
     )
+    pending_exit_plate = models.CharField(
+        max_length=20, null=True, blank=True, verbose_name='待出场车牌',
+        help_text='已缴费待出场的车牌，30分钟内有效'
+    )
+    pending_exit_time = models.DateTimeField(
+        null=True, blank=True, verbose_name='缴费出场时间',
+        help_text='用户完成缴费的时间，超过30分钟未出场需重新缴费'
+    )
     bind_time = models.DateTimeField(
         null=True, blank=True, verbose_name='绑定时间',
         help_text='用户绑定车牌的时间'
