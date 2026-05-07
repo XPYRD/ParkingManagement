@@ -104,9 +104,14 @@
                   :disabled="plateSourceMode === 'my_vehicle'"
                   @click="plateSourceMode === 'manual' ? (plateKeyboardVisible = true) : null"
                   @focus="plateSourceMode === 'manual' ? (plateKeyboardVisible = true) : null"
-                  @input="handleQuickPayPlateInput"
+                  @input="handleQuickPayPlateInput($event.target.value)"
                   @paste="handleQuickPayPlatePaste"
                 />
+                <!-- 格式提示 -->
+                <div v-if="plateSourceMode === 'manual' && quickPayForm.plate_number" class="mt-1 text-[10px] font-mono"
+                  :class="getPlateFormatHint(quickPayForm.plate_number)?.valid ? 'text-green-500/70' : 'text-amber-500/70'">
+                  {{ getPlateFormatHint(quickPayForm.plate_number)?.text }}
+                </div>
               </el-form-item>
 
               <div v-if="plateSourceMode === 'manual' && plateKeyboardVisible" class="rounded-2xl border border-slate-200 bg-slate-50 p-3 md:p-4">
@@ -255,7 +260,6 @@
           <button
             class="flex-1 py-3 px-4 rounded-[10px] text-sm font-bold tracking-wide transition-all duration-300"
             :class="simulationTab === 'exit' ? 'bg-cyan-500/15 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.15)]' : 'text-slate-500 hover:text-slate-300'"
-            :disabled="!quickPayQuote || quickPayQuote.found !== true"
             @click="simulationTab = 'exit'"
           >
             <span class="inline-flex items-center gap-2">
@@ -362,8 +366,13 @@
                   :placeholder="entryPlateSourceMode === 'my_vehicle' ? '选择车辆后自动填入' : '输入车牌号...'"
                   :disabled="entryPlateSourceMode === 'my_vehicle'"
                   class="sim-plate-input"
-                  @input="handleEntrySimulationPlateInput"
+                  @input="handleEntrySimulationPlateInput($event.target.value)"
                 />
+              </div>
+              <!-- 格式提示 -->
+              <div v-if="entryPlateSourceMode === 'manual' && entrySimulationPlate" class="mt-1.5 text-[10px] font-mono"
+                :class="getPlateFormatHint(entrySimulationPlate)?.valid ? 'text-green-500/70' : 'text-amber-500/70'">
+                {{ getPlateFormatHint(entrySimulationPlate)?.text }}
               </div>
             </div>
             <div>
@@ -853,6 +862,18 @@ function normalizePlate(value) {
 
 function handleEntrySimulationPlateInput(value) {
   entrySimulationPlate.value = normalizePlate(value)
+}
+
+/** 检查车牌格式并返回提示信息 */
+function getPlateFormatHint(plate) {
+  if (!plate || plate.length === 0) return null
+  const len = plate.length
+  const validChars = /^[一-龥A-Z0-9]+$/.test(plate)
+  if (!validChars) return { valid: false, text: '包含非法字符，仅支持中文、字母和数字' }
+  if (len < 7) return { valid: false, text: `格式不完整：当前 ${len} 位，蓝牌需 7 位，绿牌需 8 位` }
+  if (len === 7) return { valid: true, text: '蓝牌格式正确 (7位)' }
+  if (len === 8) return { valid: true, text: '绿牌格式正确 (8位)' }
+  return { valid: false, text: `位数异常：当前 ${len} 位，蓝牌需 7 位，绿牌需 8 位` }
 }
 
 function getEntrySimulationPlate() {
