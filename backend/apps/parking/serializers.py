@@ -327,6 +327,19 @@ class ReservationSerializer(serializers.ModelSerializer):
                     reservation.spot.reserved_plate = 'RESERVED'
                     reservation.spot.save(update_fields=['reserved_plate', 'last_updated'])
 
+            # 记录 Payment
+            if reservation.total_amount > 0:
+                from payments.models import Payment
+                Payment.objects.create(
+                    user=reservation.user,
+                    transaction_id=payment_transaction_id or f"RES_{reservation.user.id}_{int(timezone.now().timestamp() * 1000)}",
+                    amount=reservation.total_amount,
+                    method=payment_method or Payment.Method.BALANCE,
+                    status=Payment.Status.SUCCESS,
+                    biz_type=Payment.BizType.RESERVATION,
+                    remark=f'车位预定 {reservation.booking_code}',
+                )
+
             return reservation
 
 

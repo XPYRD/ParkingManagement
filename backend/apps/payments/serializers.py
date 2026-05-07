@@ -34,41 +34,40 @@ class PaymentSerializer(serializers.ModelSerializer):
         source='session.vehicle.plate_number',
         read_only=True, default=''
     )
+    biz_type_label = serializers.CharField(
+        source='get_biz_type_display', read_only=True
+    )
+    # 向后兼容：payment_type 从 biz_type 映射
     payment_type = serializers.SerializerMethodField()
     payment_type_label = serializers.SerializerMethodField()
-    payment_method = serializers.CharField(source='method', read_only=True)
 
     class Meta:
         model = Payment
         fields = [
             'id', 'user', 'session', 'transaction_id',
             'amount', 'method', 'method_label',
-            'payment_method',
+            'status', 'status_label', 'biz_type', 'biz_type_label',
             'payment_type', 'payment_type_label',
-            'status', 'status_label', 'plate_number',
-            'remark', 'created_at',
+            'plate_number', 'remark', 'created_at',
         ]
         read_only_fields = ['id', 'user', 'transaction_id', 'created_at']
 
+    BIZ_TYPE_MAP = {
+        'parking_fee': 'parking',
+        'subscription': 'subscription',
+        'reservation': 'reservation',
+    }
+    BIZ_TYPE_LABEL_MAP = {
+        'parking_fee': '停车缴费',
+        'subscription': '套餐订阅',
+        'reservation': '车位预定',
+    }
+
     def get_payment_type(self, obj):
-        if obj.session_id:
-            return 'parking'
-        remark = str(obj.remark or '')
-        if '订阅' in remark or '套餐' in remark:
-            return 'subscription'
-        if '充值' in remark:
-            return 'topup'
-        return 'other'
+        return self.BIZ_TYPE_MAP.get(obj.biz_type, 'other')
 
     def get_payment_type_label(self, obj):
-        payment_type = self.get_payment_type(obj)
-        label_map = {
-            'parking': '停车缴费',
-            'subscription': '套餐订阅',
-            'topup': '余额充值',
-            'other': '其他支付',
-        }
-        return label_map.get(payment_type, '其他支付')
+        return self.BIZ_TYPE_LABEL_MAP.get(obj.biz_type, '其他支付')
 
 
 class SubscriptionSerializer(serializers.ModelSerializer):

@@ -22,6 +22,7 @@ urlpatterns = [
     path('register/', views.UserRegisterView.as_view(), name='register'),
     path('profile/', views.UserProfileView.as_view(), name='profile'),
     path('change-password/', views.ChangePasswordView.as_view(), name='change-password'),
+    path('change-username/', views.ChangeUsernameView.as_view(), name='change-username'),
     path('2fa/setup/', views.TwoFactorSetupView.as_view(), name='two-factor-setup'),
     path('2fa/activate/', views.TwoFactorActivateView.as_view(), name='two-factor-activate'),
     path('', include(router.urls)),

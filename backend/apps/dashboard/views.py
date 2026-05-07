@@ -38,21 +38,42 @@ class DashboardOverviewView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request):
-        today = timezone.now().date()
+        today = timezone.localdate()
 
         # 1. 日营收 — 对应 _7 "日营收 ¥X" 卡片
+        # 仅统计三种业务类型：停车缴费、套餐订阅、车位预定
+        valid_biz_types = [
+            Payment.BizType.PARKING_FEE,
+            Payment.BizType.SUBSCRIPTION,
+            Payment.BizType.RESERVATION,
+        ]
+
+        # Use explicit datetime range to avoid __date timezone mismatch with MySQL DATETIME
+        day_start = timezone.make_aware(
+            datetime.combine(today, datetime.min.time())
+        )
+        day_end = day_start + timedelta(days=1)
+
         daily_revenue = Payment.objects.filter(
             status=Payment.Status.SUCCESS,
-            created_at__date=today,
+            biz_type__in=valid_biz_types,
+            created_at__gte=day_start,
+            created_at__lt=day_end,
         ).aggregate(total=Sum('amount'))['total'] or 0
 
         # 1.1 营收趋势 — 近7天
         revenue_trend = []
         for i in range(6, -1, -1):
             day = today - timedelta(days=i)
+            d_start = timezone.make_aware(
+                datetime.combine(day, datetime.min.time())
+            )
+            d_end = d_start + timedelta(days=1)
             day_revenue = Payment.objects.filter(
                 status=Payment.Status.SUCCESS,
-                created_at__date=day,
+                biz_type__in=valid_biz_types,
+                created_at__gte=d_start,
+                created_at__lt=d_end,
             ).aggregate(total=Sum('amount'))['total'] or 0
             revenue_trend.append({
                 'date': day.isoformat(),
@@ -119,13 +140,15 @@ class DashboardOverviewView(APIView):
 
         # 5. 今日流量 — 对应 _7 "车辆流量" 区域
         today_traffic = ParkingSession.objects.filter(
-            entry_time__date=today
+            entry_time__gte=day_start, entry_time__lt=day_end,
         ).count()
 
         # 5.1 今日分时流量
         hourly_traffic = []
         for h in range(24):
-            hour_start = timezone.make_aware(datetime.combine(today, datetime.min.time().replace(hour=h)))
+            hour_start = timezone.make_aware(
+                datetime.combine(today, datetime.min.time().replace(hour=h))
+            )
             hour_end = hour_start + timedelta(hours=1)
             count = ParkingSession.objects.filter(
                 entry_time__gte=hour_start,
@@ -137,11 +160,17 @@ class DashboardOverviewView(APIView):
                 'count': count,
             })
 
-        # 5.2 最近交易
+        # 5.2 最近交易 — 仅展示三种业务类型
+        valid_biz_types = [
+            Payment.BizType.PARKING_FEE,
+            Payment.BizType.SUBSCRIPTION,
+            Payment.BizType.RESERVATION,
+        ]
         recent_payments = Payment.objects.filter(
             status=Payment.Status.SUCCESS,
+            biz_type__in=valid_biz_types,
         ).order_by('-created_at')[:10].values(
-            'transaction_id', 'amount', 'method', 'created_at'
+            'transaction_id', 'amount', 'method', 'biz_type', 'created_at'
         )
         recent_payments_data = []
         for p in recent_payments:
@@ -149,6 +178,8 @@ class DashboardOverviewView(APIView):
                 'transaction_id': p['transaction_id'],
                 'amount': float(p['amount']),
                 'method': p['method'],
+                'biz_type': p['biz_type'],
+                'biz_type_label': dict(Payment.BizType.choices).get(p['biz_type'], ''),
                 'created_at': p['created_at'].isoformat(),
             })
 

@@ -168,6 +168,12 @@
 
               <el-form-item label="支付方式">
                 <el-radio-group v-model="quickPayForm.method" class="!flex gap-2 !w-full">
+                  <el-radio-button label="balance" class="flex-1 text-center">
+                    <span class="inline-flex items-center gap-1">
+                      <span class="material-symbols-outlined text-lg">account_balance_wallet</span>
+                      <span>余额</span>
+                    </span>
+                  </el-radio-button>
                   <el-radio-button label="wechat" class="flex-1 text-center">
                     <span class="inline-flex items-center gap-1">
                       <img src="/微信支付.svg" alt="微信支付" class="w-4 h-4 object-contain" />
@@ -187,14 +193,14 @@
                     </span>
                   </el-radio-button>
                 </el-radio-group>
-                <!-- 银行卡已选但未添加 -->
-                <div v-if="quickPayForm.method === 'card' && !hasBankCard" class="mt-3 p-3 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-between">
+                <!-- 余额未登录提示 -->
+                <div v-if="quickPayForm.method === 'balance' && !authStore.isLoggedIn" class="mt-3 p-3 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-between">
                   <div class="flex items-center gap-2">
-                    <span class="material-symbols-outlined text-amber-500 text-lg">warning</span>
-                    <span class="text-sm text-amber-700">暂未添加银行卡</span>
+                    <span class="material-symbols-outlined text-amber-500 text-lg">login</span>
+                    <span class="text-sm text-amber-700">余额支付需要先登录</span>
                   </div>
-                  <router-link to="/payment" class="px-3 py-1 text-xs font-bold text-white bg-primary rounded-lg hover:bg-primary-dark transition-colors">
-                    + 添加银行卡
+                  <router-link to="/login" class="px-3 py-1 text-xs font-bold text-white bg-primary rounded-lg hover:bg-primary-dark transition-colors">
+                    去登录
                   </router-link>
                 </div>
               </el-form-item>
@@ -494,6 +500,43 @@
       </template>
     </el-dialog>
 
+    <!-- 银行卡选择弹窗 -->
+    <el-dialog v-model="bankCardDialogVisible" title="选择银行卡" width="92%" max-width="400px">
+      <div v-if="loadingBankCards" class="text-center py-4">
+        <el-icon class="is-loading"><Loading /></el-icon>
+        <p class="text-sm text-slate-500 mt-2">加载中…</p>
+      </div>
+      <div v-else-if="bankCards.length === 0" class="text-center py-4">
+        <span class="material-symbols-outlined text-4xl text-amber-400">credit_card_off</span>
+        <p class="text-sm text-slate-600 mt-2">暂未添加银行卡</p>
+        <router-link to="/payment" class="mt-3 inline-block px-4 py-2 text-sm font-bold text-white bg-primary rounded-lg hover:bg-primary-dark transition-colors">
+          + 添加银行卡
+        </router-link>
+      </div>
+      <div v-else class="space-y-2">
+        <div
+          v-for="card in bankCards"
+          :key="card.id"
+          class="flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors"
+          :class="quickPayForm.selectedBankCardId === card.id ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-primary/50'"
+          @click="quickPayForm.selectedBankCardId = card.id"
+        >
+          <div class="flex items-center gap-3">
+            <span class="material-symbols-outlined text-primary text-xl">credit_card</span>
+            <div>
+              <p class="text-sm font-bold text-slate-800">{{ card.bank_name }}</p>
+              <p class="text-xs text-slate-500">{{ card.card_type || '储蓄卡' }} *{{ card.card_last4 }}</p>
+            </div>
+          </div>
+          <span v-if="quickPayForm.selectedBankCardId === card.id" class="material-symbols-outlined text-primary">check_circle</span>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="bankCardDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="confirmBankCardAndPay">确认支付</el-button>
+      </template>
+    </el-dialog>
+
   </div>
 </template>
 
@@ -504,12 +547,12 @@
 
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Loading } from '@element-plus/icons-vue'
 import { getParkingSpaceStatistics, getSpacesByFloor, sendWebhookEvent, recognizePlateFromImage } from '@/api/parking'
-import { quickPayNoLogin, quickPayQuoteNoLogin, quickPayMarkExit, quickPayByPlate, quickPayMarkExitByPlate, confirmQuickPay } from '@/api/payment'
+import { quickPayNoLogin, quickPayQuoteNoLogin, quickPayMarkExit, quickPayByPlate, quickPayMarkExitByPlate, confirmQuickPay, getBankCards } from '@/api/payment'
 import { getVehicles } from '@/api/user'
 import PlateNumberInput from '@/components/PlateNumberInput.vue'
 import heroImage from '@/assets/images/hero_bg.png'
-import { hasBoundBankCard } from '@/utils/bankCard'
 import { getDefaultPaymentMethod } from '@/utils/paymentPreference'
 import { useAuthStore } from '@/stores/auth'
 
@@ -539,12 +582,12 @@ const markEntryLoading = ref(false)
 const markExitLoading = ref(false)
 const quickPayQuoteLoading = ref(false)
 const quickPayDialogVisible = ref(false)
+const bankCardDialogVisible = ref(false)
 const plateKeyboardVisible = ref(false)
 const simulationTab = ref('entry')
 const plateSourceMode = ref('manual')
 const myVehicles = ref([])
 const selectedVehicleId = ref(null)
-const hasBankCard = ref(false)
 const entryPlateSourceMode = ref('manual')
 const entryVehicleId = ref(null)
 const entrySimulationPlate = ref('')
@@ -556,7 +599,32 @@ const quickPayForm = ref({
   plate_number: '',
   energy_type: 'ice',
   method: 'wechat',
+  selectedBankCardId: null,
 })
+const bankCards = ref([])
+const loadingBankCards = ref(false)
+
+async function loadBankCards() {
+  if (!authStore.isLoggedIn) return
+  loadingBankCards.value = true
+  try {
+    const res = await getBankCards()
+    // DRF paginated response: { count, results: [...] }
+    // or flat array, or { data: [...] }
+    const list = Array.isArray(res?.results) ? res.results
+      : Array.isArray(res) ? res
+      : Array.isArray(res?.data) ? res.data
+      : []
+    bankCards.value = list
+    if (bankCards.value.length > 0 && !quickPayForm.value.selectedBankCardId) {
+      quickPayForm.value.selectedBankCardId = bankCards.value[0].id
+    }
+  } catch (err) {
+    console.error('加载银行卡失败', err)
+  } finally {
+    loadingBankCards.value = false
+  }
+}
 const quickPayQuote = ref(null)
 const quickPayResult = ref({
   qr_code_url: '',
@@ -571,18 +639,56 @@ async function submitQuickPay() {
     return
   }
 
-  hasBankCard.value = hasBoundBankCard()
-  if (quickPayForm.value.method === 'card' && !hasBankCard.value) {
-    ElMessage.warning('请先前往支付中心添加银行卡')
-    return
-  }
-
   const plate = getCurrentPlateNumber()
   if (!plate) {
     ElMessage.warning('请输入车牌号')
     return
   }
 
+  if (quickPayForm.value.method === 'balance' && !authStore.isLoggedIn) {
+    ElMessage.warning('余额支付需要先登录')
+    return
+  }
+
+  // 银行卡：弹出选择弹窗
+  if (quickPayForm.value.method === 'card') {
+    if (!authStore.isLoggedIn) {
+      ElMessage.warning('银行卡支付需要先登录')
+      return
+    }
+    // 加载银行卡列表
+    if (bankCards.value.length === 0) {
+      await loadBankCards()
+    }
+    if (bankCards.value.length === 0) {
+      ElMessage.warning('请先前往支付中心添加银行卡')
+      return
+    }
+    // 默认选中第一张
+    if (!quickPayForm.value.selectedBankCardId) {
+      quickPayForm.value.selectedBankCardId = bankCards.value[0].id
+    }
+    bankCardDialogVisible.value = true
+    return
+  }
+
+  // 其他支付方式：直接发起
+  await proceedPayment(plate)
+}
+
+/** 银行卡弹窗确认后执行支付 */
+async function confirmBankCardAndPay() {
+  if (!quickPayForm.value.selectedBankCardId) {
+    ElMessage.warning('请选择一张银行卡')
+    return
+  }
+  bankCardDialogVisible.value = false
+  const plate = getCurrentPlateNumber()
+  await proceedPayment(plate)
+}
+
+/** 执行支付请求 */
+async function proceedPayment(plate) {
   quickPayLoading.value = true
   try {
     const res = quickPayQuote.value.session_id
@@ -601,6 +707,13 @@ async function submitQuickPay() {
     if (res?.payment_state === 'subscription_free') {
       ElMessage.success(res?.leave_tip || '当前订阅有效，车辆进出场免费，无需支付')
       quickPayDialogVisible.value = false
+      await queryQuickPayQuote(false)
+      return
+    }
+
+    // 余额支付直接成功，无需扫码确认
+    if (res?.payment_state === 'paid') {
+      ElMessage.success('余额支付成功，请在30分钟内离场')
       await queryQuickPayQuote(false)
       return
     }
@@ -936,9 +1049,8 @@ async function loadHomeStats() {
 }
 
 onMounted(async () => {
-  hasBankCard.value = hasBoundBankCard()
   const defaultMethod = getDefaultPaymentMethod('wechat')
-  quickPayForm.value.method = (!hasBankCard.value && defaultMethod === 'card') ? 'wechat' : defaultMethod
+  quickPayForm.value.method = defaultMethod
   if (plateStore.plateNumber) {
     quickPayForm.value.plate_number = plateStore.plateNumber
   }
@@ -952,19 +1064,12 @@ onMounted(async () => {
     } catch (err) {
       myVehicles.value = []
     }
+    // 预加载银行卡列表，用于判断是否已绑定银行卡
+    await loadBankCards()
   }
   await loadHomeStats()
   refreshTimer = window.setInterval(loadHomeStats, 30000)
 })
-
-watch(
-  () => hasBankCard.value,
-  (bound) => {
-    if (!bound && quickPayForm.value.method === 'card') {
-      quickPayForm.value.method = 'wechat'
-    }
-  },
-)
 
 onUnmounted(() => {
   if (refreshTimer) {
@@ -1047,6 +1152,15 @@ watch(
     if (entryPlateSourceMode.value !== 'my_vehicle') return
     const selectedVehicle = myVehicles.value.find((car) => Number(car.id) === Number(vehicleId))
     entrySimulationPlate.value = normalizePlate(selectedVehicle?.plate_number || '')
+  },
+)
+
+watch(
+  () => quickPayForm.value.method,
+  (method) => {
+    if (method === 'card' && authStore.isLoggedIn && bankCards.value.length === 0) {
+      loadBankCards()
+    }
   },
 )
 </script>

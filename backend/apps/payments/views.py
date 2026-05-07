@@ -71,7 +71,15 @@ class PaymentViewSet(viewsets.ModelViewSet):
         if not request.user.is_staff:
             return Response({'detail': '仅管理员可访问'}, status=403)
 
-        qs = Payment.objects.filter(status=Payment.Status.SUCCESS)
+        valid_biz_types = [
+            Payment.BizType.PARKING_FEE,
+            Payment.BizType.SUBSCRIPTION,
+            Payment.BizType.RESERVATION,
+        ]
+        qs = Payment.objects.filter(
+            status=Payment.Status.SUCCESS,
+            biz_type__in=valid_biz_types,
+        )
         stats = qs.aggregate(
             total_revenue=Sum('amount'),
             total_count=Count('id'),
@@ -121,6 +129,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
             amount=amount,
             method=method,
             status=Payment.Status.PENDING,
+            biz_type=Payment.BizType.PARKING_FEE,
             remark=remark,
             session_id=session_id if session_id else None,
         )
@@ -180,27 +189,46 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
         return Subscription.objects.filter(user=user)
 
     def perform_create(self, serializer):
-        """创建订阅时自动关联当前用户"""
+        """创建订阅时自动关联当前用户，并记录 Payment"""
         plan_ref_id = self.request.data.get('plan_ref_id')
+        plan_ref = None
         if plan_ref_id:
             plan_ref = SubscriptionPlan.objects.filter(id=plan_ref_id, is_active=True).first()
             if plan_ref:
-                serializer.save(
+                sub = serializer.save(
                     user=self.request.user,
                     plan_ref=plan_ref,
                     plan=plan_ref.code,
                     price=plan_ref.price,
+                )
+                Payment.objects.create(
+                    user=self.request.user,
+                    transaction_id=f"SUB_{self.request.user.id}_{int(time.time() * 1000)}",
+                    amount=plan_ref.price,
+                    method=self.request.data.get('payment_method', Payment.Method.BALANCE),
+                    status=Payment.Status.SUCCESS,
+                    biz_type=Payment.BizType.SUBSCRIPTION,
+                    remark=f'套餐订阅 {plan_ref.name}',
                 )
                 return
 
         plan_code = self.request.data.get('plan')
         plan_ref = SubscriptionPlan.objects.filter(code=plan_code, is_active=True).first()
         if plan_ref:
-            serializer.save(
+            sub = serializer.save(
                 user=self.request.user,
                 plan_ref=plan_ref,
                 plan=plan_ref.code,
                 price=plan_ref.price,
+            )
+            Payment.objects.create(
+                user=self.request.user,
+                transaction_id=f"SUB_{self.request.user.id}_{int(time.time() * 1000)}",
+                amount=plan_ref.price,
+                method=self.request.data.get('payment_method', Payment.Method.BALANCE),
+                status=Payment.Status.SUCCESS,
+                biz_type=Payment.BizType.SUBSCRIPTION,
+                remark=f'套餐订阅 {plan_ref.name}',
             )
             return
 
@@ -396,8 +424,9 @@ class UserBalanceViewSet(viewsets.ViewSet):
             amount=amount,
             method=Payment.Method.BALANCE,
             status=Payment.Status.SUCCESS,
+            biz_type=Payment.BizType.PARKING_FEE,
             remark=remark,
-            session_id=session_id if session_id else None
+            session_id=session_id if session_id else None,
         )
 
         # 扣除余额

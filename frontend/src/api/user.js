@@ -30,6 +30,11 @@ export function changePassword(data) {
   return request.post('/accounts/change-password/', data)
 }
 
+/** 修改用户名 */
+export function changeUsername(data) {
+  return request.post('/accounts/change-username/', data)
+}
+
 // ============================================================
 // 车辆管理
 // ============================================================

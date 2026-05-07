@@ -76,6 +76,32 @@ class ChangePasswordView(generics.GenericAPIView):
         return Response({'detail': '密码修改成功'})
 
 
+class ChangeUsernameView(generics.GenericAPIView):
+    """
+    修改用户名 — 对应个人中心修改用户名功能
+
+    POST /api/v1/accounts/change-username/
+    {
+        "new_username": "new_name"
+    }
+    需要登录认证
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        new_username = request.data.get('new_username', '').strip()
+        if not new_username:
+            return Response({'detail': '用户名不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+        if len(new_username) < 2 or len(new_username) > 30:
+            return Response({'detail': '用户名长度需为2-30个字符'}, status=status.HTTP_400_BAD_REQUEST)
+        if User.objects.filter(username=new_username).exclude(id=request.user.id).exists():
+            return Response({'detail': '该用户名已被使用'}, status=status.HTTP_400_BAD_REQUEST)
+
+        request.user.username = new_username
+        request.user.save(update_fields=['username'])
+        return Response({'detail': '用户名修改成功', 'username': new_username})
+
+
 class VehicleViewSet(viewsets.ModelViewSet):
     """
     车辆管理 — 对应 _5/车辆管理列表

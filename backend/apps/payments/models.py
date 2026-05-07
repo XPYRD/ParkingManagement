@@ -65,6 +65,12 @@ class Payment(models.Model):
         BALANCE = 'balance', '余额支付'
         CASH = 'cash', '现金'
 
+    class BizType(models.TextChoices):
+        """业务类型 — _9 交易日志"""
+        PARKING_FEE = 'parking_fee', '停车缴费'
+        SUBSCRIPTION = 'subscription', '套餐订阅'
+        RESERVATION = 'reservation', '车位预定'
+
     class Status(models.TextChoices):
         """支付状态 — _4 历史记录状态标签"""
         SUCCESS = 'success', '成功'
@@ -95,6 +101,11 @@ class Payment(models.Model):
     status = models.CharField(
         '支付状态', max_length=10, choices=Status.choices,
         default=Status.PENDING
+    )
+    biz_type = models.CharField(
+        '业务类型', max_length=20, choices=BizType.choices,
+        default=BizType.PARKING_FEE,
+        help_text='交易日志的业务分类'
     )
     remark = models.CharField(
         '备注', max_length=200, blank=True, default='',

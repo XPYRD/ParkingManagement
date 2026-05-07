@@ -614,6 +614,75 @@ class ParkingSessionViewSet(viewsets.ModelViewSet):
         except (InvalidOperation, TypeError, ValueError):
             return Response({'detail': '金额格式错误'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # 余额支付：需要登录，直接扣款并标记已缴费
+        if method == 'balance':
+            if not request.user.is_authenticated:
+                return Response({'detail': '余额支付需要先登录'}, status=status.HTTP_401_UNAUTHORIZED)
+            try:
+                balance_obj = request.user.balance
+            except Exception:
+                return Response({'detail': '账户余额不存在'}, status=status.HTTP_400_BAD_REQUEST)
+            if balance_obj.balance < amount_dec:
+                return Response({'detail': '余额不足'}, status=status.HTTP_400_BAD_REQUEST)
+
+            transaction_id = f"QUICK_{int(time.time() * 1000)}"
+            vehicle = Vehicle.objects.filter(plate_number__iexact=plate).first()
+            space_with_plate = ParkingSpace.objects.filter(
+                current_plate__iexact=plate
+            ).exclude(current_plate__isnull=True).exclude(current_plate='').first()
+
+            # 设置待出场状态
+            if space_with_plate:
+                space_with_plate.pending_exit_plate = plate
+                space_with_plate.pending_exit_time = timezone.now()
+                space_with_plate.save(update_fields=['pending_exit_plate', 'pending_exit_time'])
+
+            # 创建/更新 ParkingSession（vehicle 必须存在，因为该字段不允许 NULL）
+            session = None
+            if vehicle:
+                session = ParkingSession.objects.filter(
+                    vehicle=vehicle, exit_time__isnull=True
+                ).first()
+                if not session and space_with_plate:
+                    entry_time = space_with_plate.bind_time or space_with_plate.last_updated or timezone.now()
+                    session = ParkingSession.objects.create(
+                        vehicle=vehicle,
+                        spot=space_with_plate,
+                        entry_time=entry_time,
+                        amount=amount_dec,
+                        payment_status=ParkingSession.PaymentStatus.PAID,
+                    )
+                if session and session.payment_status != ParkingSession.PaymentStatus.PAID:
+                    session.payment_status = ParkingSession.PaymentStatus.PAID
+                    session.amount = amount_dec
+                    session.save(update_fields=['payment_status', 'amount'])
+            if session and session.payment_status != ParkingSession.PaymentStatus.PAID:
+                session.payment_status = ParkingSession.PaymentStatus.PAID
+                session.amount = amount_dec
+                session.save(update_fields=['payment_status', 'amount'])
+
+            Payment.objects.create(
+                user=request.user,
+                transaction_id=transaction_id,
+                amount=amount_dec,
+                method=Payment.Method.BALANCE,
+                status=Payment.Status.SUCCESS,
+                biz_type=Payment.BizType.PARKING_FEE,
+                remark=f'快速缴费（余额）{plate}',
+                session_id=session.id if session else None,
+            )
+            balance_obj.balance -= amount_dec
+            balance_obj.total_consumed += amount_dec
+            balance_obj.save()
+
+            return Response({
+                'payment_state': 'paid',
+                'transaction_id': transaction_id,
+                'amount': f"{amount_dec:.2f}",
+                'plate_number': plate,
+                'session_id': session.id if session else None,
+            }, status=status.HTTP_201_CREATED)
+
         transaction_id = f"QUICK_{int(time.time() * 1000)}"
         vehicle = Vehicle.objects.filter(plate_number__iexact=plate).first()
         if request.user.is_authenticated:
@@ -623,7 +692,6 @@ class ParkingSessionViewSet(viewsets.ModelViewSet):
         else:
             payment_user = User.objects.filter(is_superuser=True).first()
 
-        # 确保有 ParkingSession 来持久化缴费状态
         space_with_plate = ParkingSpace.objects.filter(
             current_plate__iexact=plate
         ).exclude(current_plate__isnull=True).exclude(current_plate='').first()
@@ -644,17 +712,19 @@ class ParkingSessionViewSet(viewsets.ModelViewSet):
                     amount=amount_dec,
                     payment_status=ParkingSession.PaymentStatus.PENDING,
                 )
-        elif space_with_plate:
-            # 未注册车辆：创建一个匿名会话
-            anonymous_user = User.objects.filter(is_superuser=True).first()
-            if anonymous_user:
-                session = ParkingSession.objects.create(
-                    vehicle=None,
-                    spot=space_with_plate,
-                    entry_time=entry_time or space_with_plate.bind_time or timezone.now(),
-                    amount=amount_dec,
-                    payment_status=ParkingSession.PaymentStatus.PENDING,
-                )
+        elif space_with_plate and vehicle:
+            # 已注册车辆但无会话：创建会话
+            session = ParkingSession.objects.create(
+                vehicle=vehicle,
+                spot=space_with_plate,
+                entry_time=entry_time or timezone.now(),
+                amount=amount_dec,
+                payment_status=ParkingSession.PaymentStatus.PENDING,
+            )
+
+        # 未注册车辆时，用 superuser 作为 Payment 的归属用户
+        if not payment_user:
+            payment_user = User.objects.filter(is_superuser=True).first()
 
         payment = Payment.objects.create(
             user=payment_user,
@@ -662,6 +732,7 @@ class ParkingSessionViewSet(viewsets.ModelViewSet):
             amount=amount_dec,
             method=method,
             status=Payment.Status.PENDING,
+            biz_type=Payment.BizType.PARKING_FEE,
             remark=f'快速缴费（按车牌）{plate}',
             session_id=session.id if session else None,
         )
@@ -721,6 +792,52 @@ class ParkingSessionViewSet(viewsets.ModelViewSet):
             return Response({'detail': '金额格式错误'}, status=status.HTTP_400_BAD_REQUEST)
 
         from payments.models import Payment
+
+        # 余额支付：需要登录，直接扣款并标记已缴费
+        if method == 'balance':
+            if not request.user.is_authenticated:
+                return Response({'detail': '余额支付需要先登录'}, status=status.HTTP_401_UNAUTHORIZED)
+            try:
+                balance_obj = request.user.balance
+            except Exception:
+                return Response({'detail': '账户余额不存在'}, status=status.HTTP_400_BAD_REQUEST)
+            if balance_obj.balance < amount_dec:
+                return Response({'detail': '余额不足'}, status=status.HTTP_400_BAD_REQUEST)
+
+            transaction_id = f"QUICK_{int(time.time() * 1000)}"
+
+            # 设置待出场状态
+            if session.spot:
+                session.spot.pending_exit_plate = plate
+                session.spot.pending_exit_time = timezone.now()
+                session.spot.save(update_fields=['pending_exit_plate', 'pending_exit_time'])
+
+            session.payment_status = ParkingSession.PaymentStatus.PAID
+            session.amount = amount_dec
+            session.save(update_fields=['payment_status', 'amount'])
+
+            Payment.objects.create(
+                user=request.user,
+                transaction_id=transaction_id,
+                amount=amount_dec,
+                method=Payment.Method.BALANCE,
+                status=Payment.Status.SUCCESS,
+                biz_type=Payment.BizType.PARKING_FEE,
+                remark=f'快速缴费（余额）{plate}',
+                session_id=session.id,
+            )
+            balance_obj.balance -= amount_dec
+            balance_obj.total_consumed += amount_dec
+            balance_obj.save()
+
+            return Response({
+                'payment_state': 'paid',
+                'transaction_id': transaction_id,
+                'amount': f"{amount_dec:.2f}",
+                'plate_number': plate,
+                'session_id': session.id,
+            }, status=status.HTTP_201_CREATED)
+
         transaction_id = f"QUICK_{int(time.time() * 1000)}"
         if request.user.is_authenticated:
             payment_user = request.user
@@ -736,6 +853,7 @@ class ParkingSessionViewSet(viewsets.ModelViewSet):
             amount=amount_dec,
             method=method,
             status=Payment.Status.PENDING,
+            biz_type=Payment.BizType.PARKING_FEE,
             remark=f'快速缴费 {plate}',
             session_id=session.id,
         )
@@ -757,7 +875,7 @@ class ParkingSessionViewSet(viewsets.ModelViewSet):
     @permission_classes([permissions.AllowAny])
     def confirm_quick_pay(self, request):
         """确认快速缴费完成（模拟支付成功），设置车位为待出场状态，并写入 ParkingSession 持久化。"""
-        from accounts.models import Vehicle
+        from accounts.models import User, Vehicle
 
         session_id = request.data.get('session_id')
         plate = request.data.get('plate_number', '').strip().upper()
@@ -805,6 +923,27 @@ class ParkingSessionViewSet(viewsets.ModelViewSet):
         if session and session.payment_status != ParkingSession.PaymentStatus.PAID:
             session.payment_status = ParkingSession.PaymentStatus.PAID
             session.save(update_fields=['payment_status'])
+
+        # 同步更新 Payment 记录状态为成功
+        from payments.models import Payment
+        if session:
+            Payment.objects.filter(session_id=session.id).update(status=Payment.Status.SUCCESS)
+        else:
+            # 未注册车辆：更新最近创建的 PENDING 支付记录
+            pay_user = request.user if request.user.is_authenticated else (
+                vehicle.owner if vehicle else None
+            )
+            if not pay_user:
+                pay_user = User.objects.filter(is_superuser=True).first()
+            if pay_user:
+                last_payment = Payment.objects.filter(
+                    user=pay_user,
+                    status=Payment.Status.PENDING,
+                    method__in=['wechat', 'alipay', 'card'],
+                ).order_by('-id').first()
+                if last_payment:
+                    last_payment.status = Payment.Status.SUCCESS
+                    last_payment.save(update_fields=['status'])
 
         return Response({
             'detail': '缴费成功，请在30分钟内离场，超时需重新缴费',

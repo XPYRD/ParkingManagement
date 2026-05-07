@@ -349,7 +349,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import ParkingMapSVGv3 from '@/components/ParkingMapSVGv3.vue'
 import { getSpacesByFloor, findCarByPlate } from '@/api/parking'
-import { calculateNavigationPath, getNavigationStartPoints } from '@/api/map'
+import { calculateNavigationPath } from '@/api/map'
 import { quickPayQuoteNoLogin } from '@/api/payment'
 import { usePlateStore } from '@/stores/plate'
 

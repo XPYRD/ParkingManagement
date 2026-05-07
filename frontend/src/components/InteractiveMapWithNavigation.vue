@@ -2,9 +2,9 @@
   <div class="interactive-map-container">
     <!-- 地图搜索栏 -->
     <div class="search-bar">
-      <input
+      <input 
         v-model="searchPlate"
-        type="text"
+        type="text" 
         placeholder="输入车牌号寻车，如：京A88888"
         class="search-input"
         @keyup.enter="handleFindCar"
@@ -15,7 +15,7 @@
 
     <!-- SVG 地图容器 -->
     <div class="map-wrapper">
-      <svg
+      <svg 
         ref="svgMap"
         :viewBox="`0 0 ${mapWidth} ${mapHeight}`"
         class="svg-map"
@@ -26,7 +26,7 @@
           <pattern id="gridPattern" width="50" height="50" patternUnits="userSpaceOnUse">
             <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#e0e7ff" stroke-width="0.5"/>
           </pattern>
-
+          
           <!-- 路径流动动画 -->
           <style>
             .route-path {
@@ -42,7 +42,7 @@
 
         <!-- 底图背景 -->
         <rect width="100%" height="100%" fill="url(#gridPattern)" />
-
+        
         <!-- 背景建筑轮廓 -->
         <g id="background-layer" opacity="0.3">
           <rect x="20" y="20" width="960" height="760" fill="none" stroke="#1e293b" stroke-width="2"/>
@@ -54,7 +54,7 @@
         <!-- 路径规划结果层 (绘制在车位之下) -->
         <g id="route-layer">
           <!-- 动态绘制的导航路径会在这里 -->
-          <polyline
+          <polyline 
             v-if="navigationPath && navigationPath.length > 0"
             :points="navigationPath.map(p => `${p.x},${p.y}`).join(' ')"
             fill="none"
@@ -67,14 +67,14 @@
 
         <!-- 车位层 (业务数据层) -->
         <g id="parking-spaces-layer">
-          <g
+          <g 
             v-for="space in spaceStatus"
             :key="space.space_id"
             :class="['parking-space', getSpaceClass(space)]"
             @click="handleSpaceClick(space)"
           >
             <!-- 车位矩形背景 -->
-            <rect
+            <rect 
               :x="space.center_x - 20"
               :y="space.center_y - 30"
               width="40"
@@ -85,7 +85,7 @@
               stroke-width="2"
               class="space-rect"
             />
-
+            
             <!-- 车位编号文字 -->
             <text
               :x="space.center_x"
@@ -117,7 +117,7 @@
         <!-- 起终点标记 -->
         <g id="route-markers">
           <!-- 起点（电梯/出口） -->
-          <circle
+          <circle 
             v-if="startPoint"
             :cx="startPoint.x"
             :cy="startPoint.y"
@@ -126,7 +126,7 @@
             stroke="#10b981"
             stroke-width="2"
           />
-          <text
+          <text 
             v-if="startPoint"
             :x="startPoint.x"
             :y="startPoint.y - 12"
@@ -139,7 +139,7 @@
           </text>
 
           <!-- 终点（目标车位） -->
-          <circle
+          <circle 
             v-if="endPoint"
             :cx="endPoint.x"
             :cy="endPoint.y"
@@ -148,7 +148,7 @@
             stroke="#f59e0b"
             stroke-width="2"
           />
-          <text
+          <text 
             v-if="endPoint"
             :x="endPoint.x"
             :y="endPoint.y - 12"
@@ -191,14 +191,14 @@
           </div>
         </div>
         <div class="detail-actions">
-          <button
+          <button 
             v-if="selectedSpace.status === 0"
             @click="handleNavigateTo(selectedSpace)"
             class="action-btn primary"
           >
             导航到此位置
           </button>
-          <button
+          <button 
             v-if="selectedSpace.status === 1"
             @click="handleFindCarFromPlate(selectedSpace.current_plate)"
             class="action-btn secondary"
@@ -227,7 +227,7 @@
           </div>
           <div class="route-steps" v-if="navigationInfo.steps && navigationInfo.steps.length > 0">
             <div class="steps-title">导航步骤:</div>
-            <div
+            <div 
               v-for="(step, idx) in navigationInfo.steps"
               :key="idx"
               class="step-item"
@@ -297,7 +297,7 @@ async function loadMapData() {
   try {
     isLoading.value = true
     const response = await axios.get('/api/v1/map/spaces/')
-
+    
     if (response.data.code === 200) {
       // 转换后端数据为前端格式
       spaceStatus.value = response.data.data.map(space => ({
@@ -328,7 +328,7 @@ function initializeTestData() {
     const cols = 6
     const spacingX = 140
     const spacingY = 160
-
+    
     for (let i = 0; i < rows; i++) {
       for (let j = 0; j < cols; j++) {
         const isOccupied = Math.random() > 0.6
@@ -372,7 +372,7 @@ async function handleFindCar() {
     if (response.data.code === 200) {
       const carData = response.data.data
       const space = spaceStatus.value.find(s => s.space_id === carData.space_id)
-
+      
       if (space) {
         selectedSpace.value = space
         selectedSpaceId.value = space.space_id
@@ -419,18 +419,18 @@ async function calculateRoute() {
 
   try {
     isLoading.value = true
-
+    
     // 构建简化的图
     const graph = buildGraph()
     const path = dijkstra(graph, startPoint.value, endPoint.value)
-
+    
     if (path && path.length > 0) {
       navigationPath.value = path
-
+      
       // 计算距离和步骤
       let totalDistance = 0
       const steps = []
-
+      
       for (let i = 0; i < path.length - 1; i++) {
         const from = path[i]
         const to = path[i + 1]
@@ -438,22 +438,22 @@ async function calculateRoute() {
           Math.pow(to.x - from.x, 2) + Math.pow(to.y - from.y, 2)
         )
         totalDistance += distance
-
+        
         // 查找对应的空间信息用于步骤描述
-        const fromSpace = spaceStatus.value.find(s =>
+        const fromSpace = spaceStatus.value.find(s => 
           Math.abs(s.center_x - from.x) < 5 && Math.abs(s.center_y - from.y) < 5
         )
-        const toSpace = spaceStatus.value.find(s =>
+        const toSpace = spaceStatus.value.find(s => 
           Math.abs(s.center_x - to.x) < 5 && Math.abs(s.center_y - to.y) < 5
         )
-
+        
         steps.push({
           from: fromSpace?.space_id || `坐标(${Math.round(from.x)},${Math.round(from.y)})`,
           to: toSpace?.space_id || `坐标(${Math.round(to.x)},${Math.round(to.y)})`,
           distance: distance
         })
       }
-
+      
       navigationInfo.value = {
         path: path,
         distance: totalDistance,
@@ -476,23 +476,23 @@ async function calculateRoute() {
 function buildGraph() {
   const nodes = []
   const edges = []
-
+  
   // 添加起点
   nodes.push(startPoint.value)
-
+  
   // 添加所有空闲车位作为可达节点
   spaceStatus.value.forEach(space => {
     nodes.push({ x: space.center_x, y: space.center_y, spaceId: space.space_id })
   })
-
+  
   // 添加终点
   nodes.push(endPoint.value)
-
+  
   // 构建边（节点间的连接）
   for (let i = 0; i < nodes.length; i++) {
     for (let j = i + 1; j < nodes.length; j++) {
       const dist = Math.sqrt(
-        Math.pow(nodes[j].x - nodes[i].x, 2) +
+        Math.pow(nodes[j].x - nodes[i].x, 2) + 
         Math.pow(nodes[j].y - nodes[i].y, 2)
       )
       // 只连接距离较近的节点
@@ -502,7 +502,7 @@ function buildGraph() {
       }
     }
   }
-
+  
   return { nodes, edges }
 }
 
@@ -512,16 +512,16 @@ function buildGraph() {
 function dijkstra(graph, start, end) {
   const { nodes, edges } = graph
   const n = nodes.length
-
+  
   // 初始化距离和前驱节点
   const dist = Array(n).fill(Infinity)
   const prev = Array(n).fill(-1)
   const visited = Array(n).fill(false)
-
+  
   // 查找起点和终点的索引
   let startIdx = -1
   let endIdx = -1
-
+  
   for (let i = 0; i < nodes.length; i++) {
     if (Math.abs(nodes[i].x - start.x) < 5 && Math.abs(nodes[i].y - start.y) < 5) {
       startIdx = i
@@ -530,27 +530,27 @@ function dijkstra(graph, start, end) {
       endIdx = i
     }
   }
-
+  
   if (startIdx === -1 || endIdx === -1) return null
-
+  
   dist[startIdx] = 0
-
+  
   // 执行 Dijkstra 算法
   for (let count = 0; count < n; count++) {
     let minDist = Infinity
     let u = -1
-
+    
     for (let i = 0; i < n; i++) {
       if (!visited[i] && dist[i] < minDist) {
         minDist = dist[i]
         u = i
       }
     }
-
+    
     if (u === -1) break
-
+    
     visited[u] = true
-
+    
     // 更新相邻节点的距离
     for (const edge of edges) {
       if (edge.from === u && !visited[edge.to]) {
@@ -561,16 +561,16 @@ function dijkstra(graph, start, end) {
       }
     }
   }
-
+  
   // 重建路径
   const path = []
   let current = endIdx
-
+  
   while (current !== -1) {
     path.unshift({ x: nodes[current].x, y: nodes[current].y })
     current = prev[current]
   }
-
+  
   return path.length > 1 ? path : null
 }
 
@@ -631,10 +631,10 @@ function getStatusLabel(space) {
  * 获取状态样式类
  */
 function getStatusClass(space) {
-  const classes = {
-    0: 'status-free',
-    1: 'status-occupied',
-    2: 'status-maintenance'
+  const classes = { 
+    0: 'status-free', 
+    1: 'status-occupied', 
+    2: 'status-maintenance' 
   }
   return classes[space.status] || ''
 }

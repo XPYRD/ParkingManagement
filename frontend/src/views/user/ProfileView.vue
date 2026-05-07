@@ -28,6 +28,14 @@
         <div class="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-outline-variant/20">
           <h3 class="text-sm font-bold text-on-surface uppercase tracking-widest mb-4">基本信息</h3>
           <el-form label-position="top" class="space-y-4">
+            <el-form-item label="用户名">
+              <div class="flex items-center gap-2">
+                <el-input v-model="profile.username" size="large" readonly />
+                <el-button type="primary" plain size="large" class="shrink-0" @click="usernameDialogVisible = true">
+                  <span class="material-symbols-outlined text-sm">edit</span>
+                </el-button>
+              </div>
+            </el-form-item>
             <el-form-item label="手机号码">
               <el-input v-model="profile.phone" size="large" readonly />
             </el-form-item>
@@ -222,13 +230,29 @@
         <el-button type="primary" :loading="savingPassword" @click="submitChangePassword">确认修改</el-button>
       </template>
     </el-dialog>
+
+    <!-- 修改用户名弹窗 -->
+    <el-dialog v-model="usernameDialogVisible" title="修改用户名" width="420px" destroy-on-close>
+      <el-form :model="usernameForm" ref="usernameFormRef" label-position="top">
+        <el-form-item label="新用户名" prop="new_username" :rules="[
+          { required: true, message: '请输入新用户名' },
+          { min: 2, max: 30, message: '用户名长度需为2-30个字符' }
+        ]">
+          <el-input v-model="usernameForm.new_username" placeholder="请输入新用户名" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="usernameDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingUsername" @click="submitChangeUsername">确认修改</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getProfile, updateProfile, getVehicles, deleteVehicle, setPrimaryVehicle, addVehicle, changePassword } from '@/api/user'
+import { getProfile, updateProfile, getVehicles, deleteVehicle, setPrimaryVehicle, addVehicle, changePassword, changeUsername } from '@/api/user'
 import { getReservations, cancelReservation } from '@/api/parking'
 import PlateNumberInput from '@/components/PlateNumberInput.vue'
 import { hasBoundBankCard } from '@/utils/bankCard'
@@ -274,6 +298,13 @@ const passwordForm = reactive({
   old_password: '',
   new_password: '',
   new_password_confirm: '',
+})
+
+const usernameDialogVisible = ref(false)
+const savingUsername = ref(false)
+const usernameFormRef = ref(null)
+const usernameForm = reactive({
+  new_username: '',
 })
 
 const prefs = reactive({
@@ -328,6 +359,27 @@ async function submitChangePassword() {
       }
     } finally {
       savingPassword.value = false
+    }
+  })
+}
+
+async function submitChangeUsername() {
+  if (!usernameFormRef.value) return
+  await usernameFormRef.value.validate(async (valid) => {
+    if (!valid) return
+    savingUsername.value = true
+    try {
+      await changeUsername({ new_username: usernameForm.new_username })
+      ElMessage.success('用户名修改成功')
+      usernameDialogVisible.value = false
+      usernameForm.new_username = ''
+      // 刷新用户信息
+      profile.value = await getProfile()
+    } catch (err) {
+      const data = err?.response?.data
+      ElMessage.error(data?.detail || '用户名修改失败')
+    } finally {
+      savingUsername.value = false
     }
   })
 }
